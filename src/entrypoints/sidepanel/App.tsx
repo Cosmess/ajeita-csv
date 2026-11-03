@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState, type DragEvent } from "react"
 import type { ColumnSummary as Summary } from "../../core/inspect/summary";
 import type { Filter, SortKey, ViewSpec } from "../../core/inspect/view";
 import type { ParseOverrides } from "../../core/parse";
+import type { Preview } from "../../core/preview";
+import type { SessionSummary } from "../../storage/session";
 import { ColumnSummary } from "../../ui/components/ColumnSummary";
 import { ExportDialog } from "../../ui/components/ExportDialog";
 import { FileBar } from "../../ui/components/FileBar";
@@ -9,11 +11,15 @@ import { EmptyState, isAccepted } from "../../ui/components/FileDrop";
 import { ActiveFilters, FilterEditor } from "../../ui/components/FilterBar";
 import { Grid } from "../../ui/components/Grid";
 import { LoadingView } from "../../ui/components/Loading";
+import { PreviewDialog } from "../../ui/components/PreviewDialog";
+import { ProblemsPanel } from "../../ui/components/ProblemsPanel";
+import { RestorePrompt } from "../../ui/components/RestorePrompt";
 import { SearchBar } from "../../ui/components/SearchBar";
+import { SettingsButton } from "../../ui/components/Settings";
 import { SheetPicker } from "../../ui/components/SheetPicker";
 import { formatCount } from "../../ui/labels";
 import { getWorkerClient } from "../../ui/worker";
-import type { DatasetInfo, OpenProgress, OpenResult } from "../../workers/protocol";
+import type { DatasetInfo, OpenProgress, OpenResult, Operation } from "../../workers/protocol";
 
 type Screen =
   | { kind: "empty" }
@@ -29,6 +35,10 @@ type SearchState = {
   current: number;
   match?: { position: number; column: number };
 };
+
+type PreviewState = { op: Operation; data?: Preview; error?: string; applying: boolean };
+
+type Drawer = { kind: "summary"; column: number; data?: Summary } | { kind: "problems" };
 
 const EMPTY_VIEW: ViewSpec = { sort: [], filters: [] };
 const EMPTY_SEARCH: SearchState = { query: "", searching: false, total: 0, stored: 0, current: 0 };
@@ -49,6 +59,9 @@ function nextSort(sort: SortKey[], column: number, additive: boolean): SortKey[]
   return others;
 }
 
+const isTyping = (target: EventTarget | null) =>
+  target instanceof HTMLElement && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName));
+
 export function App() {
   const client = getWorkerClient();
   const [screen, setScreen] = useState<Screen>({ kind: "empty" });
@@ -59,22 +72,38 @@ export function App() {
   const [error, setError] = useState<string>();
   const [notice, setNotice] = useState<string>();
   const [filterColumn, setFilterColumn] = useState<number>();
-  const [summary, setSummary] = useState<{ column: number; data?: Summary }>();
+  const [drawer, setDrawer] = useState<Drawer>();
+  const [preview, setPreview] = useState<PreviewState>();
   const [exporting, setExporting] = useState(false);
   const [search, setSearch] = useState<SearchState>(EMPTY_SEARCH);
+  const [focus, setFocus] = useState<{ position: number; key: number }>();
+  const [saved, setSaved] = useState<SessionSummary>();
+  const [confirmReopen, setConfirmReopen] = useState<{ overrides: ParseOverrides; sheet?: string }>();
   const [dragging, setDragging] = useState(false);
   // Muda a cada arquivo aberto: a grade é recriada e volta ao topo.
   const [gridKey, setGridKey] = useState(0);
   const dragDepth = useRef(0);
 
-  const showDataset = useCallback((next: DatasetInfo) => {
+  // Sessão salva de antes: oferecer para continuar.
+  useEffect(() => {
+    client
+      .request("savedSession", {})
+      .then((summary) => setSaved(summary ?? undefined))
+      .catch(() => {});
+  }, [client]);
+
+  // Atualiza a tela com o estado do worker. `fresh`: outro arquivo (ou o mesmo relido).
+  const applyInfo = useCallback((next: DatasetInfo, fresh: boolean) => {
     setInfo(next);
-    setView(EMPTY_VIEW);
-    setViewState({ count: next.rowCount, version: next.viewVersion });
-    setFilterColumn(undefined);
-    setSummary(undefined);
-    setSearch((current) => ({ ...EMPTY_SEARCH, query: current.query }));
-    setGridKey((key) => key + 1);
+    setView(next.view);
+    setViewState({ count: next.viewCount, version: next.viewVersion });
+    if (fresh) {
+      setFilterColumn(undefined);
+      setDrawer(undefined);
+      setFocus(undefined);
+      setSearch((current) => ({ ...EMPTY_SEARCH, query: current.query }));
+      setGridKey((key) => key + 1);
+    }
     setScreen({ kind: "ready" });
   }, []);
 
@@ -88,6 +117,7 @@ export function App() {
       }
       setError(undefined);
       setNotice(undefined);
+      setSaved(undefined);
       setScreen({ kind: "loading", fileName: file.name, progress: { fraction: 0 } });
       try {
         const result: OpenResult = await client.request("openFile", { file, sheet }, (progress) =>
@@ -98,27 +128,27 @@ export function App() {
           ),
         );
         if (result.status === "choose-sheet") setScreen({ kind: "choose-sheet", file, sheets: result.sheets });
-        else showDataset(result.info);
+        else applyInfo(result.info, true);
       } catch (e) {
         setError(`Não foi possível abrir "${file.name}": ${message(e)}`);
         restoreScreen();
       }
     },
-    [client, restoreScreen, showDataset],
+    [applyInfo, client, restoreScreen],
   );
 
   const reopen = useCallback(
     async (overrides: ParseOverrides, sheet?: string) => {
       if (!info) return;
+      setConfirmReopen(undefined);
       setBusy(true);
       setError(undefined);
-      const rereads = overrides.encoding !== undefined || overrides.delimiter !== undefined;
-      if (rereads) setScreen({ kind: "loading", fileName: info.fileName, progress: { fraction: 0 } });
+      setScreen({ kind: "loading", fileName: info.fileName, progress: { fraction: 0 } });
       try {
         const next = await client.request("reopen", { overrides, sheet }, (progress) =>
           setScreen((current) => (current.kind === "loading" ? { ...current, progress: { fraction: progress.fraction } } : current)),
         );
-        showDataset(next);
+        applyInfo(next, true);
       } catch (e) {
         setError(message(e));
         restoreScreen();
@@ -126,8 +156,107 @@ export function App() {
         setBusy(false);
       }
     },
-    [client, info, restoreScreen, showDataset],
+    [applyInfo, client, info, restoreScreen],
   );
+
+  // Reler o arquivo descarta as alterações; pedir confirmação se houver alguma.
+  const requestReopen = (overrides: ParseOverrides, sheet?: string) => {
+    if (info?.undo) setConfirmReopen({ overrides, sheet });
+    else void reopen(overrides, sheet);
+  };
+
+  const restoreSaved = async () => {
+    setBusy(true);
+    setScreen({ kind: "loading", fileName: saved?.fileName ?? "", progress: { fraction: 0.5 } });
+    try {
+      applyInfo(await client.request("restore", {}), true);
+      setSaved(undefined);
+    } catch (e) {
+      setError(`Não foi possível restaurar: ${message(e)}`);
+      setScreen({ kind: "empty" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const clearSaved = async () => {
+    try {
+      await client.request("discardSaved", {});
+      setSaved(undefined);
+      setNotice(
+        info
+          ? "Dados salvos apagados. O arquivo aberto volta a ser salvo se você fizer outra alteração."
+          : "Dados salvos apagados.",
+      );
+    } catch (e) {
+      setError(message(e));
+    }
+  };
+
+  // Executa uma alteração (com desfazer) e atualiza a tela.
+  const run = useCallback(
+    async (request: () => Promise<DatasetInfo>) => {
+      setBusy(true);
+      setError(undefined);
+      try {
+        applyInfo(await request(), false);
+        return true;
+      } catch (e) {
+        setError(message(e));
+        return false;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [applyInfo],
+  );
+
+  const execute = useCallback((op: Operation) => run(() => client.request("execute", { op })), [client, run]);
+  const undo = useCallback(() => run(() => client.request("undo", {})), [client, run]);
+  const redo = useCallback(() => run(() => client.request("redo", {})), [client, run]);
+
+  const openPreview = async (op: Operation) => {
+    setPreview({ op, applying: false });
+    try {
+      const data = await client.request("preview", { op });
+      setPreview((current) => (current?.op === op ? { ...current, data } : current));
+    } catch (e) {
+      setPreview((current) => (current?.op === op ? { ...current, error: message(e) } : current));
+    }
+  };
+
+  const applyPreview = async () => {
+    if (!preview) return;
+    setPreview({ ...preview, applying: true });
+    const ok = await execute(preview.op);
+    setPreview(ok ? undefined : { ...preview, applying: false });
+  };
+
+  const goToRow = async (row: number) => {
+    const position = await client.request("locateRow", { row });
+    if (position < 0) {
+      setNotice(`A linha ${formatCount(row + 1)} está escondida pelos filtros ativos.`);
+      return;
+    }
+    setFocus({ position, key: Date.now() });
+  };
+
+  // Atalhos: desfazer e refazer (fora de campos de texto).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (screen.kind !== "ready" || busy || isTyping(e.target) || !(e.metaKey || e.ctrlKey)) return;
+      const key = e.key.toLowerCase();
+      if (key === "z" && !e.shiftKey && info?.undo) {
+        e.preventDefault();
+        void undo();
+      } else if (((key === "z" && e.shiftKey) || key === "y") && info?.redo) {
+        e.preventDefault();
+        void redo();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [busy, info, redo, screen.kind, undo]);
 
   const applyView = useCallback(
     async (next: ViewSpec) => {
@@ -150,7 +279,7 @@ export function App() {
   const removeFilter = (column: number) =>
     void applyView({ ...view, filters: view.filters.filter((f) => f.column !== column) });
 
-  // Busca: refeita quando o texto muda (com uma pequena espera) ou quando a visualização muda.
+  // Busca: refeita quando o texto muda (com uma pequena espera) ou quando os dados ou a visualização mudam.
   useEffect(() => {
     if (screen.kind !== "ready") return;
     const query = search.query;
@@ -185,16 +314,15 @@ export function App() {
     setSearch((current) => ({ ...current, current: index, match: match ?? undefined }));
   };
 
-  // Resumo da coluna aberta, recalculado quando os filtros mudam.
-  const summaryColumn = summary?.column;
+  // Resumo da coluna aberta, recalculado quando os dados ou os filtros mudam.
+  const summaryColumn = drawer?.kind === "summary" ? drawer.column : undefined;
   const filtered = view.filters.length > 0;
   useEffect(() => {
     if (summaryColumn === undefined) return;
     let cancelled = false;
-    setSummary({ column: summaryColumn });
     client
       .request("summarize", { column: summaryColumn, scope: filtered ? "view" : "all" })
-      .then((data) => !cancelled && setSummary({ column: summaryColumn, data }))
+      .then((data) => !cancelled && setDrawer({ kind: "summary", column: summaryColumn, data }))
       .catch((e) => !cancelled && setError(message(e)));
     return () => {
       cancelled = true;
@@ -229,7 +357,10 @@ export function App() {
     >
       {screen.kind !== "ready" && (
         <header className="intro">
-          <h1>Ajeita CSV</h1>
+          <div className="intro-title">
+            <h1>Ajeita CSV</h1>
+            <SettingsButton onClearSaved={() => void clearSaved()} />
+          </div>
           <p className="muted">
             Abra, corrija e limpe arquivos CSV. Tudo é processado no seu navegador: nenhum dado sai da sua máquina.
           </p>
@@ -252,8 +383,37 @@ export function App() {
           </button>
         </div>
       )}
+      {confirmReopen && (
+        <div className="banner warn" role="alertdialog" aria-label="Confirmar releitura">
+          <span>Ler o arquivo de novo descarta as alterações feitas. Continuar?</span>
+          <span className="banner-actions">
+            <button type="button" className="button" onClick={() => setConfirmReopen(undefined)}>
+              Cancelar
+            </button>
+            <button
+              type="button"
+              className="button primary"
+              onClick={() => void reopen(confirmReopen.overrides, confirmReopen.sheet)}
+            >
+              Ler de novo
+            </button>
+          </span>
+        </div>
+      )}
 
-      {screen.kind === "empty" && <EmptyState onFile={(file) => void openFile(file)} />}
+      {screen.kind === "empty" && (
+        <>
+          {saved && (
+            <RestorePrompt
+              summary={saved}
+              busy={busy}
+              onRestore={() => void restoreSaved()}
+              onDiscard={() => void clearSaved()}
+            />
+          )}
+          <EmptyState onFile={(file) => void openFile(file)} />
+        </>
+      )}
       {screen.kind === "loading" && <LoadingView fileName={screen.fileName} progress={screen.progress} />}
       {screen.kind === "choose-sheet" && (
         <SheetPicker
@@ -269,10 +429,30 @@ export function App() {
           <FileBar
             info={info}
             busy={busy}
-            onReopen={(overrides, sheet) => void reopen(overrides, sheet)}
+            onReopen={requestReopen}
+            onSetHeader={(hasHeader) => void execute({ op: "setHeader", params: { hasHeader } })}
+            onUndo={() => void undo()}
+            onRedo={() => void redo()}
             onOpenFile={(file) => void openFile(file)}
             onExport={() => setExporting(true)}
+            onClearSaved={() => void clearSaved()}
           />
+          {info.mojibakeCells > 0 && (
+            <div className="banner warn" role="status">
+              <span>
+                {formatCount(info.mojibakeCells)} {info.mojibakeCells === 1 ? "célula parece ter" : "células parecem ter"}{" "}
+                acentos quebrados (como <code>JoÃ£o</code>).
+              </span>
+              <button
+                type="button"
+                className="button"
+                disabled={busy}
+                onClick={() => void openPreview({ op: "fixEncoding", params: {} })}
+              >
+                Corrigir…
+              </button>
+            </div>
+          )}
           <SearchBar
             query={search.query}
             searching={search.searching}
@@ -304,6 +484,19 @@ export function App() {
             onRemove={removeFilter}
             onClear={() => void applyView({ ...view, filters: [] })}
           />
+          {view.sort.length > 0 && (
+            <div className="sort-bar">
+              <span className="muted small">A ordenação está só na tela.</span>
+              <button
+                type="button"
+                className="button link"
+                disabled={busy}
+                onClick={() => void execute({ op: "applySort", params: { sort: view.sort } })}
+              >
+                Aplicar aos dados
+              </button>
+            </div>
+          )}
           <div className="grid-area">
             <Grid
               key={gridKey}
@@ -314,27 +507,52 @@ export function App() {
               filters={view.filters}
               searchQuery={search.total > 0 ? search.query : ""}
               currentMatch={search.match}
+              focus={focus}
+              readOnly={busy}
               onSort={(column, additive) => void applyView({ ...view, sort: nextSort(view.sort, column, additive) })}
               onFilter={setFilterColumn}
-              onSummary={(column) => setSummary({ column })}
+              onSummary={(column) => setDrawer({ kind: "summary", column })}
+              onEditCell={(row, column, value) => void execute({ op: "editCell", params: { row, column, value } })}
             />
-            {summary && (
+            {drawer?.kind === "summary" && (
               <ColumnSummary
-                summary={summary.data}
-                loading={!summary.data}
+                summary={drawer.data}
+                loading={!drawer.data}
                 filtered={filtered}
                 onFilterValue={(column, value) => setFilter({ column, op: "equals", value })}
-                onClose={() => setSummary(undefined)}
+                onClose={() => setDrawer(undefined)}
+              />
+            )}
+            {drawer?.kind === "problems" && (
+              <ProblemsPanel
+                info={info}
+                busy={busy}
+                onGoToRow={(row) => void goToRow(row)}
+                onFixRow={(row) => void execute({ op: "fixProblems", params: { rows: [row] } })}
+                onEditRow={(row, text) => void execute({ op: "editRow", params: { row, text } })}
+                onDeleteRow={(row) => void execute({ op: "deleteRows", params: { rows: [row] } })}
+                onFixAll={() => void openPreview({ op: "fixProblems", params: { rows: "all" } })}
+                onClose={() => setDrawer(undefined)}
               />
             )}
           </div>
           <footer className="status-bar" role="status">
-            {filtered
-              ? `${formatCount(viewState.count)} de ${formatCount(info.rowCount)} linhas`
-              : `${formatCount(info.rowCount)} linhas`}
-            {` · ${formatCount(info.columns.length)} colunas`}
-            {info.meta.issues.length > 0 && ` · ${formatCount(info.meta.issues.length)} linhas com problema de estrutura`}
-            {busy && " · processando…"}
+            <span>
+              {filtered
+                ? `${formatCount(viewState.count)} de ${formatCount(info.rowCount)} linhas`
+                : `${formatCount(info.rowCount)} linhas`}
+              {` · ${formatCount(info.columns.length)} colunas`}
+              {busy && " · processando…"}
+            </span>
+            {info.problemRows > 0 && (
+              <button
+                type="button"
+                className="button link problems-button"
+                onClick={() => setDrawer(drawer?.kind === "problems" ? undefined : { kind: "problems" })}
+              >
+                ⚠ {formatCount(info.problemRows)} {info.problemRows === 1 ? "linha com problema" : "linhas com problema"}
+              </button>
+            )}
           </footer>
           {exporting && (
             <ExportDialog
@@ -346,6 +564,19 @@ export function App() {
               onSaved={(name) => {
                 setExporting(false);
                 setNotice(`Arquivo salvo: ${name}`);
+              }}
+            />
+          )}
+          {preview && (
+            <PreviewDialog
+              preview={preview.data}
+              error={preview.error}
+              applying={preview.applying}
+              onApply={() => void applyPreview()}
+              onCancel={() => setPreview(undefined)}
+              onGoToRow={(row) => {
+                setPreview(undefined);
+                void goToRow(row);
               }}
             />
           )}
