@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { strFromU8, unzipSync } from "fflate";
 import { EXPORT_PRESETS } from "../src/core/export/csv";
 import type { OpenProgress } from "../src/workers/protocol";
 import { WorkerSession } from "../src/workers/session";
@@ -255,5 +256,42 @@ describe("sessão do worker", () => {
     expect(preview.text).toContain("CREATE TABLE `clientes`");
     const text = new TextDecoder().decode(session.exportSql(options, "all"));
     expect(text.match(/\n  \(/g)).toHaveLength(5);
+  });
+
+  it("divide em partes dentro de um .zip, com cabeçalho em cada parte", async () => {
+    const { session } = await openCsv("clientes-utf8-virgula.csv");
+    const split = { mode: "column", column: 4 } as const;
+    expect(session.previewSplit(split, EXPORT_PRESETS.csv, "all")).toMatchObject({
+      total: 4,
+      parts: [
+        { name: "clientes-utf8-virgula_SP.csv", rows: 2 },
+        { name: "clientes-utf8-virgula_MG.csv", rows: 1 },
+        { name: "clientes-utf8-virgula_SC.csv", rows: 1 },
+        { name: "clientes-utf8-virgula_AL.csv", rows: 1 },
+      ],
+    });
+    const zip = unzipSync(session.exportSplit(split, EXPORT_PRESETS.csv, "all", "replace"));
+    expect(Object.keys(zip)).toHaveLength(4);
+    const sp = strFromU8(zip["clientes-utf8-virgula_SP.csv"]!).trim().split("\n");
+    expect(sp).toHaveLength(3);
+    expect(sp[0]).toBe("nome,cpf,email,cidade,uf,data_cadastro,valor_compra");
+  });
+
+  it("junta arquivos e o resultado vira o arquivo aberto", async () => {
+    const session = new WorkerSession({ store: memoryStore(), saveDelay: 0 });
+    const files = ["juntar-parte-1.csv", "juntar-parte-2.csv", "juntar-parte-3.tsv"].map(fileFrom);
+    const preview = await session.previewMerge(files);
+    expect(preview.columns).toEqual(["nome", "email", "cidade", "UF"]);
+    expect(preview.files[1]).toMatchObject({ encoding: "windows-1252", rows: 2, onlyHere: ["UF"] });
+    const info = await session.mergeFiles(files, true);
+    expect(info).toMatchObject({ fileName: "arquivos-juntados.csv", rowCount: 6 });
+    expect(info.columns.map((c) => c.name)).toEqual(["nome", "email", "cidade", "UF", "arquivo_origem"]);
+    await expect(session.previewMerge([fileFrom("juntar-parte-1.csv"), new File(["{"], "ruim.json")])).rejects.toThrow('"ruim.json"');
+  });
+
+  it("exporta .xlsx e texto para colar", async () => {
+    const { session } = await openCsv("clientes-utf8-virgula.csv");
+    expect(session.exportXlsx("all").subarray(0, 2)).toEqual(new Uint8Array([0x50, 0x4b]));
+    expect(session.copyText("all").split("\r\n")[1]).toBe("João da Silva\t529.982.247-25\tjoao.silva@example.com\tSão Paulo\tSP\t15/03/2025\t1.234,56");
   });
 });

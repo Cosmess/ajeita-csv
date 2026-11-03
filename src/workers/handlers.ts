@@ -43,6 +43,20 @@ export function createHandlers(session = new WorkerSession()): Handlers {
     createFromRows: ({ name, rows, hasHeader }) => session.createFromRows(name, rows, hasHeader),
     createFromJson: ({ name, text }) => session.createFromJson(name, text),
     previewSql: ({ options, scope }) => session.previewSql(options, scope),
+    exportXlsx: ({ scope }, ctx) => {
+      const bytes = session.exportXlsx(scope);
+      ctx.transfer([bytes.buffer]);
+      return { bytes };
+    },
+    copyText: ({ scope }) => session.copyText(scope),
+    previewSplit: ({ split, options, scope }) => session.previewSplit(split, options, scope),
+    exportSplit: ({ split, options, scope, policy }, ctx) => {
+      const bytes = session.exportSplit(split, options, scope, policy);
+      ctx.transfer([bytes.buffer]);
+      return { bytes };
+    },
+    previewMerge: ({ files }) => session.previewMerge(files),
+    mergeFiles: ({ files, addSource }) => session.mergeFiles(files, addSource),
     exportSql: ({ options, scope }, ctx) => {
       const bytes = session.exportSql(options, scope);
       ctx.transfer([bytes.buffer]);

@@ -1,7 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { ACTION_GROUPS, ACTIONS, type ActionDef } from "../actions";
 
-export function ActionsMenu({ disabled, onPick }: { disabled: boolean; onPick: (action: ActionDef) => void }) {
+type Props = {
+  disabled: boolean;
+  onPick: (action: ActionDef) => void;
+  // Itens que abrem janelas próprias (dividir, juntar), no grupo "Arquivos".
+  files: { label: string; onClick: () => void }[];
+};
+
+export function ActionsMenu({ disabled, onPick, files }: Props) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -45,6 +52,23 @@ export function ActionsMenu({ disabled, onPick }: { disabled: boolean; onPick: (
               ))}
             </div>
           ))}
+          <div className="menu-group">
+            <p className="menu-title">Arquivos</p>
+            {files.map((item) => (
+              <button
+                key={item.label}
+                type="button"
+                role="menuitem"
+                className="menu-item"
+                onClick={() => {
+                  setOpen(false);
+                  item.onClick();
+                }}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
         </div>
       )}
     </div>

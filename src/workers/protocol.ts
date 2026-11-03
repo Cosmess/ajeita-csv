@@ -12,6 +12,8 @@ import type { Preview } from "../core/preview";
 import type { SessionSummary } from "../storage/session";
 import type { ValidationRule } from "../core/validate";
 import type { SqlOptions } from "../core/create/sql";
+import type { MergeFileSummary } from "../core/files/merge";
+import type { SplitMode } from "../core/files/split";
 
 export type DatasetInfo = {
   fileName: string;
@@ -77,6 +79,15 @@ export type RequestMap = {
   createFromJson: Rpc<{ name: string; text: string }, DatasetInfo>;
   previewSql: Rpc<{ options: SqlOptions; scope: ExportScope }, { text: string; columns: { name: string; type: string }[] }>;
   exportSql: Rpc<{ options: SqlOptions; scope: ExportScope }, { bytes: Uint8Array }>;
+  exportXlsx: Rpc<{ scope: ExportScope }, { bytes: Uint8Array }>;
+  copyText: Rpc<{ scope: ExportScope }, string>;
+  previewSplit: Rpc<
+    { split: SplitMode; options: CsvExportOptions; scope: ExportScope },
+    { total: number; parts: { name: string; rows: number }[]; estimatedBytes: number }
+  >;
+  exportSplit: Rpc<{ split: SplitMode; options: CsvExportOptions; scope: ExportScope; policy: UnencodablePolicy }, { bytes: Uint8Array }>;
+  previewMerge: Rpc<{ files: File[] }, { files: MergeFileSummary[]; columns: string[] }>;
+  mergeFiles: Rpc<{ files: File[]; addSource: boolean }, DatasetInfo>;
   // Salva a sessão agora, sem esperar (antes de uma operação que pode travar o worker).
   flush: Rpc<Record<string, never>, void>;
   checkExport: Rpc<{ options: CsvExportOptions; scope: ExportScope }, { unencodable: { char: string; count: number }[] }>;

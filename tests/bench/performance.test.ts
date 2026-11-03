@@ -11,6 +11,9 @@ import { buildDataset, parseCsvBytes } from "../../src/core/parse";
 import { planOp, type Op } from "../../src/core/ops";
 import { applyPatch } from "../../src/core/patch";
 import { previewPlan } from "../../src/core/preview";
+import { zipSync } from "fflate";
+import { buildXlsx } from "../../src/core/export/xlsx";
+import { planSplit } from "../../src/core/files/split";
 
 const FILE = join(__dirname, "..", "fixtures", "generated", "referencia.csv");
 // Metas do CLAUDE.md, com 20% de tolerância.
@@ -126,5 +129,29 @@ describe.skipIf(!existsSync(FILE))("desempenho com o arquivo de referência", ()
       applyPatch(dataset, planOp(dataset, { op: "splitColumn", params: { column: 1, separator: " ", parts: 2 } }).patch),
     );
     expect(ms).toBeLessThan(seconds(3));
+  });
+
+  it("divide 1 milhão de linhas em partes de 100 mil num .zip", () => {
+    const { ms, result } = measure("dividir em .zip", () => {
+      const files: Record<string, Uint8Array> = {};
+      for (const part of planSplit(dataset, { mode: "rows", size: 100_000 }, "ref", "csv")) {
+        files[part.name] = encodeText(serializeCsv(dataset, EXPORT_PRESETS["excel-br"], part.rows), "utf-8-bom");
+      }
+      return zipSync(files, { level: 6 });
+    });
+    console.log(`zip: ${(result.length / 1e6).toFixed(0)} MB`);
+    expect(ms).toBeLessThan(seconds(30));
+  });
+
+  it("gera .xlsx com 100 mil linhas", () => {
+    const { ms, result } = measure("xlsx 100 mil linhas", () => buildXlsx(dataset, "ref", allIndices(100_000)));
+    console.log(`xlsx: ${(result.length / 1e6).toFixed(1)} MB`);
+    expect(ms).toBeLessThan(seconds(15));
+  });
+
+  it("gera .xlsx com 1 milhão de linhas", () => {
+    const { ms, result } = measure("xlsx 1 milhão de linhas", () => buildXlsx(dataset, "ref"));
+    console.log(`xlsx: ${(result.length / 1e6).toFixed(1)} MB; heap: ${(process.memoryUsage().heapUsed / 1e9).toFixed(2)} GB`);
+    expect(ms).toBeLessThan(seconds(60));
   });
 });
