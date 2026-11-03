@@ -147,3 +147,13 @@ vite.config.ts.timestamp-*
 
 # Turbo Repo
 .turbo
+
+# Especificação local do Claude Code (não versionada)
+CLAUDE.md
+
+# WXT
+.wxt/
+stats.html
+
+# Fixtures grandes geradas por script
+tests/fixtures/generated/
