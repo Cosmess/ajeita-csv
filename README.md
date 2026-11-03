@@ -1,14 +1,18 @@
+<p align="center"><img src="public/icon/128.png" alt="Logo do Ajeita CSV" width="96" height="96"></p>
+
 # Ajeita CSV
 
 Extensão para Google Chrome que **abre, corrige, formata, limpa e cria arquivos CSV**, pensada para times de operações e backoffice no Brasil.
 
 Resolve os problemas mais comuns de quem lida com planilhas no dia a dia: acentos quebrados (`JoÃ£o`), CPFs que perderam o zero à esquerda depois de passar pelo Excel, arquivo com `;` que abre tudo numa coluna só, datas e números em formatos misturados, linhas quebradas e por aí vai.
 
-> **Privacidade em primeiro lugar:** todo o processamento acontece no seu navegador. Nenhum dado é enviado para servidores, e a extensão não faz nenhuma requisição de rede.
+> **Privacidade em primeiro lugar:** todo o processamento acontece no seu navegador. Nenhum dado é enviado para servidores, e a extensão não faz nenhuma requisição de rede. Veja a [política de privacidade](PRIVACY.md).
 
 ## Status
 
-🚧 Em desenvolvimento. A extensão ainda não está publicada na Chrome Web Store.
+Versão 1.0.0, pronta para envio à Chrome Web Store (ainda não publicada).
+
+![Ajeita CSV corrigindo acentos quebrados](docs/loja/1-acentos.png)
 
 | Fase | Conteúdo | Status |
 |---|---|---|
@@ -18,7 +22,7 @@ Resolve os problemas mais comuns de quem lida com planilhas no dia a dia: acento
 | 4. Formatar e limpar | Limpeza, conversões (datas, números, CPF/CNPJ, telefone, CEP), colunas, validação, localizar e substituir | ✅ Concluída |
 | 5. Criar | Grade vazia, CSV a partir da página (seleção e tabela), JSON, geração de SQL | ✅ Concluída |
 | 6. Exportações e arquivos | `.xlsx`, TSV, área de transferência, dividir e juntar arquivos | ✅ Concluída |
-| 7. Publicação | Ícones, textos, política de privacidade, pacote para a loja | ⏳ |
+| 7. Publicação | Ícones, textos, política de privacidade, pacote para a loja | ✅ Concluída |
 
 ## Como usar
 
@@ -207,6 +211,12 @@ Princípios que guiam o código:
 | Gerar `.xlsx` com 100 mil / 1 milhão de linhas | 2,3 / 21,6 s | — |
 
 Na interface (Chrome, 1 milhão de linhas): editar uma célula leva ~0,5 s, desfazer ~0,45 s e restaurar a sessão salva ~1,3 s.
+
+## Publicação
+
+- `pnpm zip` gera `.output/ajeita-csv-<versão>-chrome.zip`, o pacote enviado à Chrome Web Store.
+- [docs/loja/LOJA.md](docs/loja/LOJA.md) tem os textos da ficha da loja, a justificativa de cada permissão e as respostas de privacidade; as capturas de tela e o banner estão na mesma pasta.
+- O logo está em [assets/logo.svg](assets/logo.svg) (e `assets/logo-small.svg`, simplificado para 16 e 32 px). Os PNGs de `public/icon/` são gerados a partir deles.
 
 ## Contribuindo
 

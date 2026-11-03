@@ -6,7 +6,8 @@
   --fg: #1f2328;
   --muted: #59636e;
   --border: #d1d9e0;
-  --accent: #0969da;
+  /* Verde da marca (mesmo tom do logo). */
+  --accent: #007a3d;
   --accent-fg: #ffffff;
   --ok: #1a7f37;
   --ok-bg: #dafbe1;
@@ -16,7 +17,7 @@
   --match-current: #f5c542;
   --warn: #9a6700;
   --warn-bg: #fff8c5;
-  --focus-row: #ddf4ff;
+  --focus-row: #e3f6ea;
   --diff-before: #ffebe9;
   --diff-after: #dafbe1;
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -31,7 +32,7 @@
     --fg: #e6edf3;
     --muted: #9198a1;
     --border: #3d444d;
-    --accent: #4493f8;
+    --accent: #2ea85f;
     --accent-fg: #0d1117;
     --ok: #3fb950;
     --ok-bg: #12261e;
@@ -41,7 +42,7 @@
     --match-current: #9e7c1a;
     --warn: #d29922;
     --warn-bg: #2e2a12;
-    --focus-row: #12263d;
+    --focus-row: #12301f;
     --diff-before: #3a1d1f;
     --diff-after: #15301f;
   }
@@ -55,6 +56,8 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--fg);
+  /* Caixas de seleção e botões de opção no verde da marca. */
+  accent-color: var(--accent);
 }
 
 .app {
@@ -68,6 +71,9 @@ body {
 }
 
 h1 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin: 0 0 4px;
   font-size: 1.4rem;
 }

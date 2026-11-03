@@ -1,5 +1,7 @@
 import { useState } from "react";
 
+export const PRIVACY_URL = "https://github.com/Cosmess/ajeita-csv/blob/main/PRIVACY.md";
+
 export function SettingsButton({ onClearSaved }: { onClearSaved: () => void }) {
   const [open, setOpen] = useState(false);
   return (
@@ -30,6 +32,9 @@ export function SettingsButton({ onClearSaved }: { onClearSaved: () => void }) {
           >
             Limpar dados salvos
           </button>
+          <a className="small" href={PRIVACY_URL} target="_blank" rel="noreferrer">
+            Política de privacidade
+          </a>
         </div>
       )}
     </div>

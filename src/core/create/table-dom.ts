@@ -40,7 +40,7 @@ export function pickTableInPage(): Promise<
     hint.textContent = "Ajeita CSV: clique na tabela que você quer importar (Esc cancela)";
     hint.setAttribute(
       "style",
-      "position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:2147483647;background:#0969da;color:#fff;" +
+      "position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:2147483647;background:#007a3d;color:#fff;" +
         "padding:8px 14px;border-radius:6px;font:14px system-ui,sans-serif;box-shadow:0 4px 12px rgba(0,0,0,.25)",
     );
     document.body.appendChild(hint);
@@ -50,7 +50,7 @@ export function pickTableInPage(): Promise<
       current = table;
       if (table) {
         table.dataset.ajeitaOutline = table.style.outline;
-        table.style.outline = "3px solid #0969da";
+        table.style.outline = "3px solid #007a3d";
       }
     };
     const finish = (result: { status: "cancelled" } | ReturnType<typeof read>) => {
