@@ -8,7 +8,7 @@ const BR = new RegExp(String.raw`^-?(?:0|[1-9]\d{0,2}(?:\.\d{3})+|[1-9]\d*)(?:,\
 const US = new RegExp(String.raw`^-?(?:0|[1-9]\d{0,2}(?:,\d{3})+|[1-9]\d*)(?:\.\d+)?$`);
 
 // Remove símbolo de moeda e espaços, mantendo o sinal: "-R$ 1.234,56" → "-1.234,56".
-function stripCurrency(value: string): string {
+export function stripCurrency(value: string): string {
   let v = value.trim();
   let negative = false;
   if (v.startsWith("-")) {
