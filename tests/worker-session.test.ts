@@ -210,4 +210,50 @@ describe("sessão do worker", () => {
     expect(moved.view).toEqual({ sort: [], filters: [] });
     expect(moved.columns[0]!.name).toBe("uf");
   });
+
+  it("cria planilha em branco e permite editar, colar e salvar", async () => {
+    const store = memoryStore();
+    const session = new WorkerSession({ store, saveDelay: 0 });
+    const blank = session.createBlank(3, 10);
+    expect(blank).toMatchObject({ fileName: "nova-planilha.csv", rowCount: 10 });
+    expect(blank.meta.source).toBe("created");
+    expect(blank.columns.map((c) => c.name)).toEqual(["Coluna 1", "Coluna 2", "Coluna 3"]);
+    session.execute({ op: "paste", params: { row: 0, column: 0, text: "Maria\tRecife\nJoão\tCuritiba" } });
+    expect(session.getRows(0, 2).rows).toEqual([
+      ["Maria", "Recife", ""],
+      ["João", "Curitiba", ""],
+    ]);
+    await session.flush();
+    expect(store.saved?.fileName).toBe("nova-planilha.csv");
+    await expect(session.reopen({ delimiter: ";" }, undefined, () => {})).rejects.toThrow("não podem ser relidos");
+  });
+
+  it("cria a partir de linhas da página", async () => {
+    const session = new WorkerSession({ store: memoryStore(), saveDelay: 0 });
+    const info = session.createFromRows("Vendas.csv", [["Região", "Total"], ["Sul", "430,00"]], true);
+    expect(info).toMatchObject({ fileName: "Vendas.csv", rowCount: 1 });
+    expect(info.columns[1]).toMatchObject({ name: "Total", type: "number", format: "br" });
+  });
+
+  it("abre JSON e troca o campo que vira uma linha por item", async () => {
+    const session = new WorkerSession({ store: memoryStore(), saveDelay: 0 });
+    const result = await session.open(fileFrom("clientes-aninhado.json"), undefined, () => {});
+    if (result.status !== "opened") throw new Error("esperava aberto");
+    expect(result.info).toMatchObject({ rowCount: 3, jsonArrays: ["telefones", "pedidos"] });
+    expect(result.info.meta.source).toBe("json");
+    const exploded = await session.reopen({ explode: "pedidos" }, undefined, () => {});
+    expect(exploded).toMatchObject({ rowCount: 4 });
+    expect(exploded.meta.explode).toBe("pedidos");
+    expect((await session.reopen({ explode: "" }, undefined, () => {})).rowCount).toBe(3);
+  });
+
+  it("gera prévia e arquivo SQL", async () => {
+    const { session } = await openCsv("clientes-utf8-virgula.csv");
+    const options = { dialect: "mysql", mode: "insert", table: "clientes", createTable: true, normalizeNames: true } as const;
+    const preview = session.previewSql(options, "all");
+    expect(preview.columns.find((c) => c.name === "valor_compra")?.type).toBe("decimal(7, 2)");
+    expect(preview.text).toContain("CREATE TABLE `clientes`");
+    const text = new TextDecoder().decode(session.exportSql(options, "all"));
+    expect(text.match(/\n  \(/g)).toHaveLength(5);
+  });
 });

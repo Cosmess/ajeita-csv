@@ -9,7 +9,18 @@ import { searchCells, type SearchResult } from "../core/inspect/search";
 import { summarizeColumn } from "../core/inspect/summary";
 import { allIndices, buildView, type ViewSpec } from "../core/inspect/view";
 import { planOp, type Op } from "../core/ops";
-import { buildDataset, parseCsvBytes, tableFromRows, type ParseOverrides, type RawTable } from "../core/parse";
+import Papa from "papaparse";
+import { arrayFields, parseJsonRecords } from "../core/create/json";
+import { generateSql, inferSqlColumns, type SqlOptions } from "../core/create/sql";
+import {
+  buildDataset,
+  parseCsvBytes,
+  tableFromCreated,
+  tableFromJson,
+  tableFromRows,
+  type ParseOverrides,
+  type RawTable,
+} from "../core/parse";
 import { detectHeader } from "../core/parse/header";
 import { readSheetRows, readWorkbook, type Workbook } from "../core/parse/xlsx";
 import { previewPlan, type Preview } from "../core/preview";
@@ -19,6 +30,8 @@ import type { DatasetInfo, ExportScope, OpenProgress, OpenResult, ProblemItem } 
 
 const ZIP_MAGIC = [0x50, 0x4b, 0x03, 0x04];
 const EMPTY_VIEW: ViewSpec = { sort: [], filters: [] };
+
+const isJson = (fileName: string) => /\.json$/i.test(fileName);
 
 function isXlsx(fileName: string, bytes: Uint8Array): boolean {
   return /\.xlsx$/i.test(fileName) || ZIP_MAGIC.every((byte, i) => bytes[i] === byte);
@@ -45,6 +58,8 @@ export class WorkerSession {
   private file?: File;
   private workbook?: Workbook;
   private dataset?: Dataset;
+  // Campos de array do JSON aberto (para escolher "uma linha por item").
+  private jsonArrays: string[] = [];
   private history: History = emptyHistory();
   private viewSpec: ViewSpec = EMPTY_VIEW;
   private normalized?: NormalizedColumns;
@@ -71,6 +86,12 @@ export class WorkerSession {
     this.workbook = undefined;
     const bytes = new Uint8Array(await file.arrayBuffer());
 
+    if (isJson(file.name)) {
+      progress({ fraction: 0.1 });
+      this.load(this.jsonTable(await file.text(), undefined));
+      return { status: "opened", info: this.info() };
+    }
+
     if (isXlsx(file.name, bytes)) {
       progress({ fraction: 0.1 });
       this.workbook = readWorkbook(bytes);
@@ -89,6 +110,13 @@ export class WorkerSession {
     const current = this.requireDataset().meta;
     const file = this.requireFile();
     const keep = { hasHeader: overrides.hasHeader ?? current.hasHeader };
+
+    if (current.source === "json") {
+      this.load(this.jsonTable(await file.text(), overrides.explode ?? current.explode));
+      return this.info();
+    }
+
+    if (current.source === "created") throw new Error("Dados criados no painel não podem ser relidos");
 
     if (current.source === "xlsx") {
       this.workbook ??= readWorkbook(new Uint8Array(await file.arrayBuffer()));
@@ -110,6 +138,53 @@ export class WorkerSession {
       ),
     );
     return this.info();
+  }
+
+  // --- Criar ------------------------------------------------------------------
+
+  // Grade vazia, texto ou tabela da página: os dados viram um CSV em memória, que
+  // é o "arquivo" da sessão (para salvar e exportar como qualquer outro).
+  createFromRows(name: string, rows: string[][], hasHeader: boolean): DatasetInfo {
+    if (rows.length === 0) throw new Error("Não há dados para criar a planilha");
+    this.file = new File([Papa.unparse(rows, { escapeFormulae: false })], name, { type: "text/csv" });
+    this.workbook = undefined;
+    this.load(tableFromCreated(rows, hasHeader));
+    return this.info();
+  }
+
+  createBlank(columns: number, rows: number): DatasetInfo {
+    const header = Array.from({ length: columns }, (_, i) => `Coluna ${i + 1}`);
+    const empty = Array.from({ length: rows }, () => Array<string>(columns).fill(""));
+    return this.createFromRows("nova-planilha.csv", [header, ...empty], true);
+  }
+
+  createFromJson(name: string, text: string): DatasetInfo {
+    const table = this.jsonTable(text, undefined);
+    this.file = new File([text], name, { type: "application/json" });
+    this.workbook = undefined;
+    this.load(table);
+    return this.info();
+  }
+
+  // --- SQL --------------------------------------------------------------------
+
+  previewSql(options: SqlOptions, scope: ExportScope): { text: string; columns: { name: string; type: string }[] } {
+    const dataset = this.requireDataset();
+    const rows = scope === "view" ? this.view : undefined;
+    // Prévia com as primeiras linhas: rápida mesmo em arquivos grandes.
+    const sample = (rows ?? allIndices(dataset.rows.length)).subarray(0, 5);
+    const text = generateSql(dataset, options, sample, this.file?.name);
+    const columns = inferSqlColumns(dataset, options, rows).map((c) => ({
+      name: c.name,
+      type: c.type.kind === "decimal" ? `decimal(${c.type.precision}, ${c.type.scale})` : c.type.kind === "text" ? `texto até ${c.type.length}` : c.type.kind,
+    }));
+    return { text, columns };
+  }
+
+  exportSql(options: SqlOptions, scope: ExportScope): Uint8Array {
+    const dataset = this.requireDataset();
+    const text = generateSql(dataset, options, scope === "view" ? this.view : undefined, this.file?.name);
+    return new TextEncoder().encode(text);
   }
 
   // --- Alterações com desfazer -----------------------------------------------
@@ -214,6 +289,7 @@ export class WorkerSession {
     if (!saved) throw new Error("Não há sessão salva");
     this.file = new File([saved.file], saved.fileName);
     this.workbook = undefined;
+    this.jsonArrays = saved.dataset.meta.source === "json" ? arrayFields(parseJsonRecords(await this.file.text())) : [];
     this.viewSpec = saved.view;
     this.change(saved.dataset, saved.history, false);
     return this.info();
@@ -317,6 +393,11 @@ export class WorkerSession {
     });
   }
 
+  private jsonTable(text: string, explode: string | undefined): RawTable {
+    this.jsonArrays = arrayFields(parseJsonRecords(text));
+    return tableFromJson(text, explode);
+  }
+
   private sheetTable(sheet: string, overrides: ParseOverrides): RawTable {
     return tableFromRows(readSheetRows(this.workbook!, sheet), { ...overrides, sheet });
   }
@@ -340,6 +421,7 @@ export class WorkerSession {
       problems: countProblems(this.problems),
       problemRows: this.problems.length,
       mojibakeCells: this.mojibakeCells,
+      jsonArrays: dataset.meta.source === "json" ? this.jsonArrays : [],
       undo: this.history.done.at(-1)?.label,
       redo: this.history.undone.at(-1)?.label,
     };
