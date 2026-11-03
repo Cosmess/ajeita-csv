@@ -3,9 +3,13 @@
 import type { Column, ParseMeta } from "../core/dataset";
 import type { CsvExportOptions } from "../core/export/csv";
 import type { UnencodablePolicy } from "../core/export/windows1252";
+import type { Problem, ProblemKind } from "../core/fix/problems";
 import type { ColumnSummary } from "../core/inspect/summary";
 import type { ViewSpec } from "../core/inspect/view";
+import type { Op as DataOp } from "../core/ops";
 import type { ParseOverrides } from "../core/parse";
+import type { Preview } from "../core/preview";
+import type { SessionSummary } from "../storage/session";
 
 export type DatasetInfo = {
   fileName: string;
@@ -14,9 +18,20 @@ export type DatasetInfo = {
   meta: ParseMeta;
   // Abas do .xlsx aberto; vazio para CSV.
   sheets: string[];
-  // Muda a cada novo arquivo ou visualização; a UI descarta linhas de versões antigas.
+  // Muda a cada alteração nos dados ou na visualização; a UI descarta linhas de versões antigas.
   viewVersion: number;
+  view: ViewSpec;
+  viewCount: number;
+  // Quantas linhas têm cada tipo de problema, e quantas têm algum.
+  problems: Record<ProblemKind, number>;
+  problemRows: number;
+  mojibakeCells: number;
+  // Descrição do passo que seria desfeito ou refeito.
+  undo?: string;
+  redo?: string;
 };
+
+export type ProblemItem = Problem & { text: string };
 
 export type OpenProgress = {
   fraction: number;
@@ -28,20 +43,32 @@ export type OpenResult = { status: "opened"; info: DatasetInfo } | { status: "ch
 
 export type ExportScope = "all" | "view";
 
-type Op<P, R, G = never> = { params: P; result: R; progress: G };
+// Operação de alteração nos dados (desfazível), do núcleo.
+export type Operation = DataOp;
+
+type Rpc<P, R, G = never> = { params: P; result: R; progress: G };
 
 export type RequestMap = {
-  ping: Op<{ sentAt: number }, { sentAt: number; handledAt: number }>;
-  openFile: Op<{ file: File; sheet?: string }, OpenResult, OpenProgress>;
-  // Lê de novo o arquivo atual com encoding, delimitador, cabeçalho ou aba escolhidos pelo usuário.
-  reopen: Op<{ overrides: ParseOverrides; sheet?: string }, DatasetInfo, OpenProgress>;
-  setView: Op<ViewSpec, { viewCount: number; viewVersion: number }>;
-  getRows: Op<{ start: number; count: number }, { viewVersion: number; start: number; indices: number[]; rows: string[][] }>;
-  search: Op<{ query: string }, { total: number; stored: number }>;
-  getMatch: Op<{ index: number }, { position: number; column: number } | null>;
-  summarize: Op<{ column: number; scope: ExportScope }, ColumnSummary>;
-  checkExport: Op<{ options: CsvExportOptions; scope: ExportScope }, { unencodable: { char: string; count: number }[] }>;
-  exportFile: Op<{ options: CsvExportOptions; scope: ExportScope; policy: UnencodablePolicy }, { bytes: Uint8Array }>;
+  ping: Rpc<{ sentAt: number }, { sentAt: number; handledAt: number }>;
+  openFile: Rpc<{ file: File; sheet?: string }, OpenResult, OpenProgress>;
+  // Lê de novo o arquivo atual com encoding, delimitador ou aba escolhidos pelo usuário.
+  reopen: Rpc<{ overrides: ParseOverrides; sheet?: string }, DatasetInfo, OpenProgress>;
+  preview: Rpc<{ op: Operation }, Preview>;
+  execute: Rpc<{ op: Operation }, DatasetInfo>;
+  undo: Rpc<Record<string, never>, DatasetInfo>;
+  redo: Rpc<Record<string, never>, DatasetInfo>;
+  getProblems: Rpc<{ offset: number; limit: number }, { total: number; items: ProblemItem[] }>;
+  locateRow: Rpc<{ row: number }, number>;
+  savedSession: Rpc<Record<string, never>, SessionSummary | null>;
+  restore: Rpc<Record<string, never>, DatasetInfo>;
+  discardSaved: Rpc<Record<string, never>, void>;
+  setView: Rpc<ViewSpec, { viewCount: number; viewVersion: number }>;
+  getRows: Rpc<{ start: number; count: number }, { viewVersion: number; start: number; indices: number[]; rows: string[][] }>;
+  search: Rpc<{ query: string }, { total: number; stored: number }>;
+  getMatch: Rpc<{ index: number }, { position: number; column: number } | null>;
+  summarize: Rpc<{ column: number; scope: ExportScope }, ColumnSummary>;
+  checkExport: Rpc<{ options: CsvExportOptions; scope: ExportScope }, { unencodable: { char: string; count: number }[] }>;
+  exportFile: Rpc<{ options: CsvExportOptions; scope: ExportScope; policy: UnencodablePolicy }, { bytes: Uint8Array }>;
 };
 
 export type RequestType = keyof RequestMap;
