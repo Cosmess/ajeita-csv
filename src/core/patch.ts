@@ -19,8 +19,13 @@ export type PatchBody =
   | { kind: "permute"; order: Uint32Array }
   // Liga ou desliga o cabeçalho. Ao desligar, `row` volta a ser a primeira linha de dados.
   | { kind: "header"; hasHeader: boolean; row?: string[] }
+  // Remonta as colunas: cada nova coluna vem de uma coluna antiga ou traz os próprios valores.
+  // `lengths` devolve a linhas que eram mais curtas o tamanho original (usado nos inversos).
+  | { kind: "remap"; sources: ColumnSource[]; header: string[]; lengths?: [row: number, length: number][] }
   // Vários patches aplicados em sequência.
   | { kind: "batch"; patches: Patch[] };
+
+export type ColumnSource = { from: number } | { values: string[] };
 
 // `issues`: problemas do parser a restaurar ao aplicar. Os inversos guardam o
 // estado anterior; nos demais casos os índices são recalculados.
@@ -128,6 +133,31 @@ function applyBody(dataset: Dataset, patch: Patch): BodyResult {
       };
     }
 
+    case "remap": {
+      const width = dataset.columns.length;
+      const { sources } = patch;
+      const identity = sources.length === width && sources.every((s, i) => "from" in s && s.from === i);
+      const shorter: [number, number][] = [];
+      let rows = dataset.rows;
+      if (!identity) {
+        rows = dataset.rows.map((row, r) => {
+          if (row.length < width) shorter.push([r, row.length]);
+          return sources.map((source) => ("from" in source ? (row[source.from] ?? "") : (source.values[r] ?? "")));
+        });
+        for (const [r, length] of patch.lengths ?? []) rows[r] = rows[r]!.slice(0, length);
+      }
+      // Inverso: colunas que continuam existindo voltam pela posição nova; as removidas, pelos valores guardados.
+      const inverseSources: ColumnSource[] = Array.from({ length: width }, (_, old) => {
+        const position = sources.findIndex((s) => "from" in s && s.from === old);
+        return position >= 0 ? { from: position } : { values: dataset.rows.map((row) => row[old] ?? "") };
+      });
+      return {
+        rows,
+        meta: { ...meta, header: meta.hasHeader ? patch.header : [] },
+        inverse: { kind: "remap", sources: inverseSources, header: meta.header, lengths: shorter.length ? shorter : undefined },
+      };
+    }
+
     case "batch": {
       let current = dataset;
       const inverses: Patch[] = [];
@@ -153,6 +183,7 @@ function remapIssues(issues: ParseIssue[], patch: Patch, rowCount: number): Pars
 
   switch (patch.kind) {
     case "cells":
+    case "remap":
       return issues;
     case "replace": {
       const replaced = new Set(patch.rows.map((r) => r.index));
