@@ -12,7 +12,7 @@ Resolve os problemas mais comuns de quem lida com planilhas no dia a dia: acento
 
 Versão 1.0.0, pronta para envio à Chrome Web Store (ainda não publicada).
 
-![Ajeita CSV corrigindo acentos quebrados](docs/loja/1-acentos.png)
+![Ajeita CSV corrigindo acentos quebrados](assets/screenshot.png)
 
 | Fase | Conteúdo | Status |
 |---|---|---|
@@ -215,7 +215,6 @@ Na interface (Chrome, 1 milhão de linhas): editar uma célula leva ~0,5 s, desf
 ## Publicação
 
 - `pnpm zip` gera `.output/ajeita-csv-<versão>-chrome.zip`, o pacote enviado à Chrome Web Store.
-- [docs/loja/LOJA.md](docs/loja/LOJA.md) tem os textos da ficha da loja, a justificativa de cada permissão e as respostas de privacidade; as capturas de tela e o banner estão na mesma pasta.
 - O logo está em [assets/logo.svg](assets/logo.svg) (e `assets/logo-small.svg`, simplificado para 16 e 32 px). Os PNGs de `public/icon/` são gerados a partir deles.
 
 ## Contribuindo

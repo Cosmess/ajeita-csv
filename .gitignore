@@ -160,3 +160,6 @@ tests/fixtures/generated/
 
 # macOS
 .DS_Store
+
+# Ficha da Chrome Web Store (somente local)
+docs/loja/
