@@ -1,5 +1,6 @@
 import type { ColumnType, Dataset, DateFormat, NumberFormat } from "../dataset";
 import { parseDate, parseNumber } from "../parse/values";
+import { countInvalid, type ValidationRule } from "../validate";
 
 export type ColumnSummary = {
   column: number;
@@ -12,11 +13,13 @@ export type ColumnSummary = {
   min?: string;
   max?: string;
   top: { value: string; count: number }[];
+  // Quantos valores não passam na validação ativa da coluna.
+  invalid?: number;
 };
 
 const TOP_SIZE = 10;
 
-export function summarizeColumn(dataset: Dataset, column: number, indices?: Uint32Array): ColumnSummary {
+export function summarizeColumn(dataset: Dataset, column: number, indices?: Uint32Array, rule?: ValidationRule): ColumnSummary {
   const info = dataset.columns[column];
   if (!info) throw new Error(`Coluna inexistente: ${column}`);
 
@@ -60,6 +63,7 @@ export function summarizeColumn(dataset: Dataset, column: number, indices?: Uint
     min: min?.value,
     max: max?.value,
     top: topValues(counts),
+    invalid: rule ? countInvalid(dataset.rows, column, rule, indices) : undefined,
   };
 }
 
