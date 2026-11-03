@@ -9,7 +9,12 @@ import { searchCells, type SearchResult } from "../core/inspect/search";
 import { summarizeColumn } from "../core/inspect/summary";
 import { allIndices, buildView, type ViewSpec } from "../core/inspect/view";
 import { planOp, type Op } from "../core/ops";
+import { zipSync } from "fflate";
 import Papa from "papaparse";
+import { clipboardText } from "../core/export/clipboard";
+import { buildXlsx } from "../core/export/xlsx";
+import { mergeDatasets, mergedColumns, summarizeMerge, type MergeFileSummary, type MergeInput } from "../core/files/merge";
+import { planSplit, type SplitMode } from "../core/files/split";
 import { arrayFields, parseJsonRecords } from "../core/create/json";
 import { generateSql, inferSqlColumns, type SqlOptions } from "../core/create/sql";
 import {
@@ -164,6 +169,52 @@ export class WorkerSession {
     this.workbook = undefined;
     this.load(table);
     return this.info();
+  }
+
+  // --- Outras exportações ---------------------------------------------------------
+
+  exportXlsx(scope: ExportScope): Uint8Array {
+    const base = (this.file?.name ?? "dados").replace(/\.[^.]+$/, "");
+    return buildXlsx(this.requireDataset(), base, scope === "view" ? this.view : undefined);
+  }
+
+  copyText(scope: ExportScope): string {
+    return clipboardText(this.requireDataset(), scope === "view" ? this.view : undefined);
+  }
+
+  // --- Dividir e juntar ---------------------------------------------------------
+
+  previewSplit(split: SplitMode, options: CsvExportOptions, scope: ExportScope) {
+    const dataset = this.requireDataset();
+    const parts = this.splitParts(split, options, scope);
+    // Tamanho estimado pela média das primeiras linhas.
+    const sample = (scope === "view" ? this.view : allIndices(dataset.rows.length)).subarray(0, 200);
+    const perRow = sample.length ? serializeCsv(dataset, options, sample).length / sample.length : 0;
+    const rows = parts.reduce((n, p) => n + p.rows.length, 0);
+    return {
+      total: parts.length,
+      parts: parts.slice(0, 20).map((p) => ({ name: p.name, rows: p.rows.length })),
+      estimatedBytes: Math.round(perRow * rows),
+    };
+  }
+
+  exportSplit(split: SplitMode, options: CsvExportOptions, scope: ExportScope, policy: UnencodablePolicy): Uint8Array {
+    const dataset = this.requireDataset();
+    const files: Record<string, Uint8Array> = {};
+    for (const part of this.splitParts(split, options, scope)) {
+      files[part.name] = encodeText(serializeCsv(dataset, options, part.rows), options.encoding, policy);
+    }
+    return zipSync(files, { level: 6 });
+  }
+
+  async previewMerge(files: File[]): Promise<{ files: MergeFileSummary[]; columns: string[] }> {
+    const inputs = await this.readInputs(files);
+    return { files: summarizeMerge(inputs), columns: mergedColumns(inputs) };
+  }
+
+  async mergeFiles(files: File[], addSource: boolean): Promise<DatasetInfo> {
+    const rows = mergeDatasets(await this.readInputs(files), addSource);
+    return this.createFromRows("arquivos-juntados.csv", rows, true);
   }
 
   // --- SQL --------------------------------------------------------------------
@@ -391,6 +442,34 @@ export class WorkerSession {
       },
       onPreview: (rows) => progress({ fraction, preview: previewFrom(rows) }),
     });
+  }
+
+  private splitParts(split: SplitMode, options: CsvExportOptions, scope: ExportScope) {
+    const base = (this.file?.name ?? "dados").replace(/\.[^.]+$/, "");
+    const extension = options.delimiter === "\t" ? "tsv" : "csv";
+    return planSplit(this.requireDataset(), split, base, extension, scope === "view" ? this.view : undefined);
+  }
+
+  // Lê arquivos avulsos (para juntar) sem mexer no arquivo aberto. Planilha: primeira aba.
+  private async readInputs(files: File[]): Promise<MergeInput[]> {
+    const inputs: MergeInput[] = [];
+    for (const file of files) {
+      try {
+        let table: RawTable;
+        if (isJson(file.name)) table = tableFromJson(await file.text());
+        else {
+          const bytes = new Uint8Array(await file.arrayBuffer());
+          if (isXlsx(file.name, bytes)) {
+            const workbook = readWorkbook(bytes);
+            table = tableFromRows(readSheetRows(workbook, workbook.SheetNames[0]!), { sheet: workbook.SheetNames[0] });
+          } else table = parseCsvBytes(bytes);
+        }
+        inputs.push({ name: file.name, dataset: buildDataset(table) });
+      } catch (error) {
+        throw new Error(`Não foi possível ler "${file.name}": ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    return inputs;
   }
 
   private jsonTable(text: string, explode: string | undefined): RawTable {
