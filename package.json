@@ -12,7 +12,9 @@
     "compile": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "postinstall": "wxt prepare"
+    "postinstall": "wxt prepare",
+    "gen:fixtures": "node scripts/generate-fixtures.ts",
+    "bench": "vitest run --config vitest.bench.config.ts"
   },
   "dependencies": {
     "@tanstack/react-virtual": "^3.14.25",
