@@ -1,7 +1,7 @@
 import type { Dataset } from "./dataset";
 import { rowToText } from "./fix/problems";
 import type { Plan, Unrecognized } from "./ops";
-import type { Patch } from "./patch";
+import { applyPatch, type Patch } from "./patch";
 
 // Formato padrão de prévia: totais, as primeiras linhas afetadas (antes → depois)
 // e os valores que a operação não reconheceu (e que ficam como estão).
@@ -14,6 +14,7 @@ export type Preview = {
   unrecognizedTotal: number;
 };
 
+// row = -1 indica o cabeçalho.
 export type PreviewSample =
   | { kind: "cell"; row: number; column: string; before: string; after: string }
   | { kind: "row"; row: number; before: string; after: string };
@@ -72,6 +73,27 @@ export function previewPlan(dataset: Dataset, plan: Plan): Preview {
       case "batch":
         patch.patches.forEach(visit);
         return;
+      case "remap": {
+        // Mudança nas colunas: mostra o cabeçalho e as primeiras linhas como ficam.
+        const after = applyPatch(dataset, patch).dataset;
+        const headerBefore = dataset.columns.map((c) => c.name);
+        const headerAfter = after.columns.map((c) => c.name);
+        if (headerBefore.join("\u0000") !== headerAfter.join("\u0000")) {
+          changedCells += headerAfter.filter((name, i) => name !== headerBefore[i]).length || 1;
+          samples.push({ kind: "row", row: -1, before: text(headerBefore), after: text(headerAfter) });
+        }
+        const moved = patch.sources.some((s, i) => !("from" in s) || s.from !== i) || patch.sources.length !== dataset.columns.length;
+        if (!moved) return;
+        // Células novas (colunas com valores próprios) e células das colunas removidas.
+        const kept = new Set(patch.sources.flatMap((s) => ("from" in s ? [s.from] : [])));
+        const added = patch.sources.length - patch.sources.filter((s) => "from" in s).length;
+        changedCells += dataset.rows.length * (added + dataset.columns.length - kept.size);
+        for (let row = 0; row < dataset.rows.length; row++) {
+          rows.add(row);
+          if (row < MAX_SAMPLE_ROWS) samples.push({ kind: "row", row, before: text(dataset.rows[row]!), after: text(after.rows[row]!) });
+        }
+        return;
+      }
       default:
         rows.add(-1);
     }

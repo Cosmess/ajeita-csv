@@ -3,7 +3,12 @@ import type { ColumnSummary as Summary } from "../../core/inspect/summary";
 import type { Filter, SortKey, ViewSpec } from "../../core/inspect/view";
 import type { ParseOverrides } from "../../core/parse";
 import type { Preview } from "../../core/preview";
+import type { ValidationRule } from "../../core/validate";
 import type { SessionSummary } from "../../storage/session";
+import { ACTIONS, type ActionDef } from "../../ui/actions";
+import { ActionDialog } from "../../ui/components/ActionDialog";
+import { ActionsMenu } from "../../ui/components/ActionsMenu";
+import { ColumnMenu } from "../../ui/components/ColumnMenu";
 import { ColumnSummary } from "../../ui/components/ColumnSummary";
 import { ExportDialog } from "../../ui/components/ExportDialog";
 import { FileBar } from "../../ui/components/FileBar";
@@ -18,7 +23,7 @@ import { SearchBar } from "../../ui/components/SearchBar";
 import { SettingsButton } from "../../ui/components/Settings";
 import { SheetPicker } from "../../ui/components/SheetPicker";
 import { formatCount } from "../../ui/labels";
-import { getWorkerClient } from "../../ui/worker";
+import { getWorkerClient, restartWorker } from "../../ui/worker";
 import type { DatasetInfo, OpenProgress, OpenResult, Operation } from "../../workers/protocol";
 
 type Screen =
@@ -43,6 +48,13 @@ type Drawer = { kind: "summary"; column: number; data?: Summary } | { kind: "pro
 const EMPTY_VIEW: ViewSpec = { sort: [], filters: [] };
 const EMPTY_SEARCH: SearchState = { query: "", searching: false, total: 0, stored: 0, current: 0 };
 const SEARCH_DELAY = 250;
+// Uma expressão regular pode não terminar nunca (backtracking catastrófico).
+const REGEX_TIMEOUT = 10_000;
+
+class RegexTimeout extends Error {}
+
+const usesRegex = (op: Operation) => op.op === "replace" && op.params.regex;
+const columnsKey = (info?: DatasetInfo) => info?.columns.map((c) => c.name).join("\u0000") ?? "";
 
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
@@ -79,6 +91,11 @@ export function App() {
   const [focus, setFocus] = useState<{ position: number; key: number }>();
   const [saved, setSaved] = useState<SessionSummary>();
   const [confirmReopen, setConfirmReopen] = useState<{ overrides: ParseOverrides; sheet?: string }>();
+  const [action, setAction] = useState<{ def: ActionDef; column?: number }>();
+  const [actionPicker, setActionPicker] = useState<number>();
+  const [columnMenu, setColumnMenu] = useState<{ column: number; anchor: { left: number; top: number } }>();
+  const [validations, setValidations] = useState<Partial<Record<number, ValidationRule>>>({});
+  const [invalidCounts, setInvalidCounts] = useState<Partial<Record<number, number>>>({});
   const [dragging, setDragging] = useState(false);
   // Muda a cada arquivo aberto: a grade é recriada e volta ao topo.
   const [gridKey, setGridKey] = useState(0);
@@ -94,7 +111,11 @@ export function App() {
 
   // Atualiza a tela com o estado do worker. `fresh`: outro arquivo (ou o mesmo relido).
   const applyInfo = useCallback((next: DatasetInfo, fresh: boolean) => {
-    setInfo(next);
+    // Validações apontam colunas pela posição: se as colunas mudaram, deixam de valer.
+    setInfo((previous) => {
+      if (fresh || columnsKey(previous) !== columnsKey(next)) setValidations({});
+      return next;
+    });
     setView(next.view);
     setViewState({ count: next.viewCount, version: next.viewVersion });
     if (fresh) {
@@ -202,6 +223,7 @@ export function App() {
         applyInfo(await request(), false);
         return true;
       } catch (e) {
+        if (e instanceof RegexTimeout) throw e;
         setError(message(e));
         return false;
       } finally {
@@ -211,19 +233,81 @@ export function App() {
     [applyInfo],
   );
 
-  const execute = useCallback((op: Operation) => run(() => client.request("execute", { op })), [client, run]);
+  // Operações com expressão regular: salva a sessão antes e interrompe o worker se passar do limite.
+  const guarded = useCallback(
+    async <T,>(op: Operation, request: () => Promise<T>): Promise<T> => {
+      if (!usesRegex(op)) return request();
+      await client.request("flush", {});
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const timeout = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new RegexTimeout()), REGEX_TIMEOUT);
+      });
+      try {
+        return await Promise.race([request(), timeout]);
+      } finally {
+        clearTimeout(timer);
+      }
+    },
+    [client],
+  );
+
+  const recoverFromTimeout = useCallback(async () => {
+    const fresh = restartWorker("A operação foi interrompida");
+    setPreview(undefined);
+    setBusy(false);
+    try {
+      applyInfo(await fresh.request("restore", {}), true);
+    } catch {
+      setInfo(undefined);
+      setScreen({ kind: "empty" });
+    }
+    setError(
+      "A expressão regular demorou mais de 10 segundos e foi interrompida. O arquivo foi recarregado como estava antes; tente uma expressão mais simples.",
+    );
+  }, [applyInfo]);
+
+  const execute = useCallback(
+    async (op: Operation) => {
+      try {
+        return await run(() => guarded(op, () => client.request("execute", { op })));
+      } catch (e) {
+        if (e instanceof RegexTimeout) await recoverFromTimeout();
+        return false;
+      }
+    },
+    [client, guarded, recoverFromTimeout, run],
+  );
   const undo = useCallback(() => run(() => client.request("undo", {})), [client, run]);
   const redo = useCallback(() => run(() => client.request("redo", {})), [client, run]);
 
   const openPreview = async (op: Operation) => {
     setPreview({ op, applying: false });
     try {
-      const data = await client.request("preview", { op });
+      const data = await guarded(op, () => client.request("preview", { op }));
       setPreview((current) => (current?.op === op ? { ...current, data } : current));
     } catch (e) {
-      setPreview((current) => (current?.op === op ? { ...current, error: message(e) } : current));
+      if (e instanceof RegexTimeout) await recoverFromTimeout();
+      else setPreview((current) => (current?.op === op ? { ...current, error: message(e) } : current));
     }
   };
+
+  // Quantos inválidos cada coluna validada tem, recalculado a cada alteração.
+  useEffect(() => {
+    const entries = Object.entries(validations) as [string, ValidationRule][];
+    if (entries.length === 0) {
+      setInvalidCounts({});
+      return;
+    }
+    let cancelled = false;
+    Promise.all(entries.map(([column, rule]) => client.request("countInvalid", { column: Number(column), rule })))
+      .then((counts) => {
+        if (!cancelled) setInvalidCounts(Object.fromEntries(entries.map(([column], i) => [column, counts[i]])));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [client, validations, info]);
 
   const applyPreview = async () => {
     if (!preview) return;
@@ -321,13 +405,13 @@ export function App() {
     if (summaryColumn === undefined) return;
     let cancelled = false;
     client
-      .request("summarize", { column: summaryColumn, scope: filtered ? "view" : "all" })
+      .request("summarize", { column: summaryColumn, scope: filtered ? "view" : "all", rule: validations[summaryColumn] })
       .then((data) => !cancelled && setDrawer({ kind: "summary", column: summaryColumn, data }))
       .catch((e) => !cancelled && setError(message(e)));
     return () => {
       cancelled = true;
     };
-  }, [client, summaryColumn, filtered, viewState.version]);
+  }, [client, summaryColumn, filtered, viewState.version, validations]);
 
   const onDragEnter = (e: DragEvent) => {
     if (!e.dataTransfer.types.includes("Files")) return;
@@ -453,7 +537,9 @@ export function App() {
               </button>
             </div>
           )}
-          <SearchBar
+          <div className="toolbar">
+            <ActionsMenu disabled={busy} onPick={(def) => setAction({ def })} />
+            <SearchBar
             query={search.query}
             searching={search.searching}
             total={search.total}
@@ -461,12 +547,14 @@ export function App() {
             current={search.current}
             onQuery={(query) => setSearch((current) => ({ ...current, query }))}
             onMove={(delta) => void moveSearch(delta)}
-          />
+            />
+          </div>
           {filterColumn !== undefined && (
             <FilterEditor
               column={filterColumn}
               columns={info.columns}
               current={view.filters.find((f) => f.column === filterColumn)}
+              rule={validations[filterColumn]}
               onApply={(filter) => {
                 setFilter(filter);
                 setFilterColumn(undefined);
@@ -509,9 +597,13 @@ export function App() {
               currentMatch={search.match}
               focus={focus}
               readOnly={busy}
+              validations={validations}
+              invalidCounts={invalidCounts}
               onSort={(column, additive) => void applyView({ ...view, sort: nextSort(view.sort, column, additive) })}
               onFilter={setFilterColumn}
-              onSummary={(column) => setDrawer({ kind: "summary", column })}
+              onFilterInvalid={(column) => setFilter({ column, op: "invalid", rule: validations[column] })}
+              onColumnMenu={(column, anchor) => setColumnMenu({ column, anchor })}
+              onMoveColumn={(from, to) => void execute({ op: "moveColumn", params: { from, to } })}
               onEditCell={(row, column, value) => void execute({ op: "editCell", params: { row, column, value } })}
             />
             {drawer?.kind === "summary" && (
@@ -565,6 +657,71 @@ export function App() {
                 setExporting(false);
                 setNotice(`Arquivo salvo: ${name}`);
               }}
+            />
+          )}
+          {columnMenu && (
+            <ColumnMenu
+              column={columnMenu.column}
+              columns={info.columns}
+              anchor={columnMenu.anchor}
+              hasHeader={info.meta.hasHeader}
+              rule={validations[columnMenu.column]}
+              onSummary={() => setDrawer({ kind: "summary", column: columnMenu.column })}
+              onFilter={() => setFilterColumn(columnMenu.column)}
+              onFormat={() => setActionPicker(columnMenu.column)}
+              onSplit={() => setAction({ def: ACTIONS.find((a) => a.id === "splitColumn")!, column: columnMenu.column })}
+              onRename={(name) => void execute({ op: "renameColumn", params: { column: columnMenu.column, name } })}
+              onDuplicate={() => void execute({ op: "duplicateColumn", params: { column: columnMenu.column } })}
+              onMove={(to) => void execute({ op: "moveColumn", params: { from: columnMenu.column, to } })}
+              onDelete={() => void execute({ op: "deleteColumns", params: { columns: [columnMenu.column] } })}
+              onValidate={(rule) =>
+                setValidations((current) => {
+                  const next = { ...current };
+                  if (rule) next[columnMenu.column] = rule;
+                  else delete next[columnMenu.column];
+                  return next;
+                })
+              }
+              onClose={() => setColumnMenu(undefined)}
+            />
+          )}
+          {actionPicker !== undefined && (
+            <div className="modal-backdrop" role="presentation">
+              <div className="modal" role="dialog" aria-modal="true" aria-labelledby="picker-title">
+                <h2 id="picker-title">Ajeitar "{info.columns[actionPicker]?.name}"</h2>
+                <div className="action-picker">
+                  {ACTIONS.filter((a) => a.fields.some((f) => f.kind === "columns" || f.kind === "column")).map((def) => (
+                    <button
+                      key={def.id}
+                      type="button"
+                      className="menu-item"
+                      onClick={() => {
+                        setAction({ def, column: actionPicker });
+                        setActionPicker(undefined);
+                      }}
+                    >
+                      {def.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="modal-actions">
+                  <button type="button" className="button" onClick={() => setActionPicker(undefined)}>
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+          {action && (
+            <ActionDialog
+              action={action.def}
+              columns={info.columns}
+              column={action.column}
+              onSubmit={(op) => {
+                setAction(undefined);
+                void openPreview(op);
+              }}
+              onClose={() => setAction(undefined)}
             />
           )}
           {preview && (

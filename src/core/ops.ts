@@ -1,9 +1,31 @@
-import type { Dataset } from "./dataset";
+import type { Dataset, DateFormat, NumberFormat } from "./dataset";
 import { fixMojibake, looksLikeMojibake } from "./fix/mojibake";
 import { findProblems, parseRowText, planProblemFix, type ProblemKind } from "./fix/problems";
 import { NormalizedColumns } from "./inspect/normalize";
 import { allIndices, sortIndices, type SortKey } from "./inspect/view";
 import type { Patch } from "./patch";
+import { MAX_UNRECOGNIZED, outcome, planCells } from "./transform/cells";
+import {
+  deleteColumns,
+  duplicateColumn,
+  emptyColumns,
+  mergeColumns,
+  moveColumn,
+  renameColumn,
+  splitColumn,
+} from "./transform/columns";
+import { convertDate, convertNumber } from "./transform/convert";
+import {
+  formatCep,
+  formatDocument,
+  predominantDocument,
+  type DocumentKind,
+  type DocumentMode,
+} from "./transform/documents";
+import { formatPhone, normalizePhone, type PhoneFormat } from "./transform/phone";
+import { replacer, type ReplaceOptions } from "./transform/replace";
+import { changeCase, collapseSpaces, removeAccents, type CaseMode } from "./transform/text";
+import { detectColumnType } from "./parse/values";
 
 // Operação serializável ({ op, params }): é o que fica no histórico e, no futuro,
 // nas receitas que reaplicam a mesma sequência em outro arquivo.
@@ -14,13 +36,46 @@ export type Op =
   | { op: "deleteRows"; params: { rows: number[] } }
   | { op: "fixProblems"; params: { rows: number[] | "all"; kind?: ProblemKind } }
   | { op: "applySort"; params: { sort: SortKey[] } }
-  | { op: "setHeader"; params: { hasHeader: boolean } };
+  | { op: "setHeader"; params: { hasHeader: boolean } }
+  // Limpeza
+  | { op: "trimSpaces"; params: { columns: number[] } }
+  | { op: "changeCase"; params: { columns: number[]; mode: CaseMode } }
+  | { op: "removeAccents"; params: { columns: number[] } }
+  | { op: "removeDuplicates"; params: { columns: number[] } }
+  | { op: "removeEmptyRows"; params: Record<string, never> }
+  | { op: "removeEmptyColumns"; params: Record<string, never> }
+  // Conversões
+  | { op: "convertDates"; params: { columns: number[]; to: DateFormat; keepTime: boolean; from?: DateFormat } }
+  | { op: "convertNumbers"; params: { columns: number[]; to: "br" | "us"; keepCurrency: boolean } }
+  | { op: "formatDocuments"; params: { columns: number[]; mode: DocumentMode; kind: DocumentKind; padZeros: boolean } }
+  | { op: "formatPhones"; params: { columns: number[]; format: PhoneFormat; addNinthDigit: boolean; defaultDdd?: string } }
+  | { op: "formatCeps"; params: { columns: number[]; mode: DocumentMode } }
+  // Estrutura de colunas
+  | { op: "renameColumn"; params: { column: number; name: string } }
+  | { op: "moveColumn"; params: { from: number; to: number } }
+  | { op: "deleteColumns"; params: { columns: number[] } }
+  | { op: "duplicateColumn"; params: { column: number } }
+  | { op: "splitColumn"; params: { column: number; separator: string; parts: number; names?: string[] } }
+  | { op: "mergeColumns"; params: { columns: number[]; separator: string; name: string; keepOriginals: boolean } }
+  // Localizar e substituir
+  | { op: "replace"; params: ReplaceOptions & { columns: number[] | "all" } };
 
-export type Unrecognized = { value: string; count: number; row: number };
+export type Unrecognized = { value: string; count: number; row: number; reason?: string };
 
 export type Plan = { patch: Patch; label: string; unrecognized: Unrecognized[]; unrecognizedTotal: number };
 
-const MAX_UNRECOGNIZED = 20;
+
+const columnNames = (dataset: Dataset, columns: readonly number[]) =>
+  columns.length === 1 ? `"${dataset.columns[columns[0]!]?.name ?? ""}"` : `${columns.length} colunas`;
+
+function requireColumns(dataset: Dataset, columns: readonly number[]): void {
+  if (columns.length === 0) throw new Error("Escolha pelo menos uma coluna");
+  for (const c of columns) if (c < 0 || c >= dataset.columns.length) throw new Error(`Coluna inexistente: ${c + 1}`);
+}
+
+function* values(dataset: Dataset, column: number): Generator<string> {
+  for (const row of dataset.rows) yield row[column] ?? "";
+}
 
 const rowLabel = (rows: readonly number[], one: string, many: string) =>
   rows.length === 1 ? `${one} ${rows[0]! + 1}` : `${many.replace("{n}", rows.length.toLocaleString("pt-BR"))}`;
@@ -83,7 +138,166 @@ export function planOp(dataset: Dataset, op: Op): Plan {
         hasHeader ? "Usar a primeira linha como cabeçalho" : "Tratar o cabeçalho como dados",
       );
     }
+
+    // --- Limpeza ---------------------------------------------------------------
+
+    case "trimSpaces":
+      requireColumns(dataset, op.params.columns);
+      return planCells(dataset, op.params.columns, `Remover espaços extras em ${columnNames(dataset, op.params.columns)}`, collapseSpaces);
+
+    case "changeCase": {
+      const { columns, mode } = op.params;
+      requireColumns(dataset, columns);
+      const name = { upper: "MAIÚSCULAS", lower: "minúsculas", title: "Primeira Letra Maiúscula" }[mode];
+      return planCells(dataset, columns, `${name} em ${columnNames(dataset, columns)}`, (v) => changeCase(v, mode));
+    }
+
+    case "removeAccents":
+      requireColumns(dataset, op.params.columns);
+      return planCells(dataset, op.params.columns, `Remover acentos em ${columnNames(dataset, op.params.columns)}`, removeAccents);
+
+    case "removeDuplicates": {
+      const { columns } = op.params;
+      if (columns.length > 0) requireColumns(dataset, columns);
+      const seen = new Set<string>();
+      const rows: number[] = [];
+      dataset.rows.forEach((row, index) => {
+        const key = (columns.length > 0 ? columns.map((c) => row[c] ?? "") : row).join("\u0000");
+        if (seen.has(key)) rows.push(index);
+        else seen.add(key);
+      });
+      const by = columns.length > 0 ? ` (por ${columnNames(dataset, columns)})` : "";
+      return plan({ kind: "deleteRows", rows }, `Remover ${rows.length.toLocaleString("pt-BR")} linhas duplicadas${by}`);
+    }
+
+    case "removeEmptyRows": {
+      const rows = dataset.rows.flatMap((row, index) => (row.every((cell) => cell.trim() === "") ? [index] : []));
+      return plan({ kind: "deleteRows", rows }, `Remover ${rows.length.toLocaleString("pt-BR")} linhas vazias`);
+    }
+
+    case "removeEmptyColumns": {
+      const columns = emptyColumns(dataset);
+      if (columns.length === 0) throw new Error("Não há colunas vazias");
+      return plan(deleteColumns(dataset, columns), `Remover ${columnNames(dataset, columns)} vazias`);
+    }
+
+    // --- Conversões --------------------------------------------------------------
+
+    case "convertDates": {
+      const { columns, to, keepTime } = op.params;
+      requireColumns(dataset, columns);
+      const label = { dmy: "dd/mm/aaaa", ymd: "aaaa-mm-dd", mdy: "mm/dd/aaaa" }[to];
+      return mergePlans(
+        `Converter datas para ${label} em ${columnNames(dataset, columns)}`,
+        columns.map((column) => {
+          const info = dataset.columns[column]!;
+          const detected = info.type === "date" ? (info.format as DateFormat) : detectColumnType(values(dataset, column)).format;
+          const from = op.params.from ?? (detected === "mdy" || detected === "ymd" ? detected : "dmy");
+          return planCells(dataset, [column], "", (v) => outcome(convertDate(v, from, to, keepTime)));
+        }),
+      );
+    }
+
+    case "convertNumbers": {
+      const { columns, to, keepCurrency } = op.params;
+      requireColumns(dataset, columns);
+      return mergePlans(
+        `Converter números para ${to === "br" ? "1.234,56" : "1234.56"} em ${columnNames(dataset, columns)}`,
+        columns.map((column) => {
+          const info = dataset.columns[column]!;
+          const from = info.type === "number" ? (info.format as NumberFormat) : "br";
+          return planCells(dataset, [column], "", (v) => outcome(convertNumber(v, from, to, keepCurrency)));
+        }),
+      );
+    }
+
+    case "formatDocuments": {
+      const { columns, mode, kind, padZeros } = op.params;
+      requireColumns(dataset, columns);
+      return mergePlans(
+        `${mode === "mask" ? "Colocar" : "Tirar"} máscara de CPF/CNPJ em ${columnNames(dataset, columns)}`,
+        columns.map((column) => {
+          const predominant = predominantDocument(values(dataset, column));
+          return planCells(dataset, [column], "", (v) => outcome(formatDocument(v, { mode, kind, padZeros, predominant })));
+        }),
+      );
+    }
+
+    case "formatPhones": {
+      const { columns, format, addNinthDigit, defaultDdd } = op.params;
+      requireColumns(dataset, columns);
+      if (defaultDdd && !/^\d{2}$/.test(defaultDdd)) throw new Error("O DDD padrão deve ter 2 dígitos");
+      return planCells(dataset, columns, `Padronizar telefones em ${columnNames(dataset, columns)}`, (v) => {
+        const result = normalizePhone(v, { addNinthDigit, defaultDdd: defaultDdd || undefined });
+        if (result.kind === "special") return v;
+        if (result.kind === "unrecognized") return { unrecognized: result.reason };
+        return formatPhone(result.digits, format);
+      });
+    }
+
+    case "formatCeps": {
+      const { columns, mode } = op.params;
+      requireColumns(dataset, columns);
+      return planCells(
+        dataset,
+        columns,
+        `${mode === "mask" ? "Colocar" : "Tirar"} hífen do CEP em ${columnNames(dataset, columns)}`,
+        (v) => outcome(formatCep(v, mode)),
+      );
+    }
+
+    // --- Estrutura de colunas ------------------------------------------------------
+
+    case "renameColumn": {
+      const { column, name } = op.params;
+      if (name.trim() === "") throw new Error("O nome não pode ficar vazio");
+      return plan(renameColumn(dataset, column, name.trim()), `Renomear ${columnNames(dataset, [column])} para "${name.trim()}"`);
+    }
+
+    case "moveColumn": {
+      const { from, to } = op.params;
+      return plan(moveColumn(dataset, from, to), `Mover ${columnNames(dataset, [from])}`);
+    }
+
+    case "deleteColumns":
+      requireColumns(dataset, op.params.columns);
+      return plan(deleteColumns(dataset, op.params.columns), `Excluir ${columnNames(dataset, op.params.columns)}`);
+
+    case "duplicateColumn":
+      return plan(duplicateColumn(dataset, op.params.column), `Duplicar ${columnNames(dataset, [op.params.column])}`);
+
+    case "splitColumn": {
+      const { column, separator, parts, names } = op.params;
+      return plan(splitColumn(dataset, column, separator, parts, names), `Dividir ${columnNames(dataset, [column])}`);
+    }
+
+    case "mergeColumns": {
+      const { columns, separator, name, keepOriginals } = op.params;
+      return plan(mergeColumns(dataset, columns, separator, name, keepOriginals), `Juntar ${columnNames(dataset, columns)}`);
+    }
+
+    // --- Localizar e substituir ------------------------------------------------------
+
+    case "replace": {
+      const { columns, ...options } = op.params;
+      const targets = columns === "all" ? dataset.columns.map((_, i) => i) : columns;
+      requireColumns(dataset, targets);
+      const fn = replacer(options);
+      const where = columns === "all" ? "" : ` em ${columnNames(dataset, targets)}`;
+      return planCells(dataset, targets, `Substituir "${options.find}" por "${options.replace}"${where}`, fn);
+    }
   }
+}
+
+// Junta os planos de várias colunas (cada uma com o seu formato de origem) num só passo.
+function mergePlans(label: string, plans: Plan[]): Plan {
+  const cells = plans.flatMap((p) => (p.patch.kind === "cells" ? p.patch.cells : []));
+  const unrecognized = plans
+    .flatMap((p) => p.unrecognized)
+    .sort((a, b) => b.count - a.count)
+    .slice(0, MAX_UNRECOGNIZED);
+  const unrecognizedTotal = plans.reduce((n, p) => n + p.unrecognizedTotal, 0);
+  return { patch: { kind: "cells", cells }, label, unrecognized, unrecognizedTotal };
 }
 
 function planFixEncoding(dataset: Dataset): Plan {

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Column } from "../../core/dataset";
 import type { Filter, FilterOp } from "../../core/inspect/view";
+import { RULE_LABELS, type ValidationRule } from "../../core/validate";
 import { FILTER_LABELS } from "../labels";
 
 const NEEDS_VALUE: ReadonlySet<FilterOp> = new Set(["contains", "equals", "startsWith"]);
@@ -8,6 +9,7 @@ const NEEDS_VALUE: ReadonlySet<FilterOp> = new Set(["contains", "equals", "start
 function describe(filter: Filter, columns: Column[]): string {
   const name = columns[filter.column]?.name ?? "?";
   const op = FILTER_LABELS[filter.op];
+  if (filter.op === "invalid") return `${name} ${op} (${RULE_LABELS[filter.rule ?? "required"]})`;
   return NEEDS_VALUE.has(filter.op) ? `${name} ${op} "${filter.value ?? ""}"` : `${name} ${op}`;
 }
 
@@ -15,13 +17,15 @@ type EditorProps = {
   column: number;
   columns: Column[];
   current?: Filter;
+  // Validação ativa da coluna: habilita o filtro "é inválido".
+  rule?: ValidationRule;
   onApply: (filter: Filter) => void;
   onRemove: () => void;
   onClose: () => void;
 };
 
 // Edita o filtro de uma coluna. Cada coluna tem no máximo um filtro.
-export function FilterEditor({ column, columns, current, onApply, onRemove, onClose }: EditorProps) {
+export function FilterEditor({ column, columns, current, rule, onApply, onRemove, onClose }: EditorProps) {
   const [op, setOp] = useState<FilterOp>(current?.op ?? "contains");
   const [value, setValue] = useState(current?.value ?? "");
   useEffect(() => {
@@ -30,7 +34,8 @@ export function FilterEditor({ column, columns, current, onApply, onRemove, onCl
   }, [column, current]);
 
   const needsValue = NEEDS_VALUE.has(op);
-  const apply = () => onApply({ column, op, value: needsValue ? value : undefined });
+  const apply = () =>
+    onApply({ column, op, value: needsValue ? value : undefined, rule: op === "invalid" ? rule : undefined });
 
   return (
     <form
@@ -42,7 +47,9 @@ export function FilterEditor({ column, columns, current, onApply, onRemove, onCl
     >
       <span className="filter-column">{columns[column]?.name}</span>
       <select value={op} onChange={(e) => setOp(e.target.value as FilterOp)} aria-label="Condição">
-        {Object.entries(FILTER_LABELS).map(([key, label]) => (
+        {Object.entries(FILTER_LABELS)
+          .filter(([key]) => key !== "invalid" || rule)
+          .map(([key, label]) => (
           <option key={key} value={key}>
             {label}
           </option>

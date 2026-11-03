@@ -10,6 +10,7 @@ import type { Op as DataOp } from "../core/ops";
 import type { ParseOverrides } from "../core/parse";
 import type { Preview } from "../core/preview";
 import type { SessionSummary } from "../storage/session";
+import type { ValidationRule } from "../core/validate";
 
 export type DatasetInfo = {
   fileName: string;
@@ -66,7 +67,10 @@ export type RequestMap = {
   getRows: Rpc<{ start: number; count: number }, { viewVersion: number; start: number; indices: number[]; rows: string[][] }>;
   search: Rpc<{ query: string }, { total: number; stored: number }>;
   getMatch: Rpc<{ index: number }, { position: number; column: number } | null>;
-  summarize: Rpc<{ column: number; scope: ExportScope }, ColumnSummary>;
+  summarize: Rpc<{ column: number; scope: ExportScope; rule?: ValidationRule }, ColumnSummary>;
+  countInvalid: Rpc<{ column: number; rule: ValidationRule }, number>;
+  // Salva a sessão agora, sem esperar (antes de uma operação que pode travar o worker).
+  flush: Rpc<Record<string, never>, void>;
   checkExport: Rpc<{ options: CsvExportOptions; scope: ExportScope }, { unencodable: { char: string; count: number }[] }>;
   exportFile: Rpc<{ options: CsvExportOptions; scope: ExportScope; policy: UnencodablePolicy }, { bytes: Uint8Array }>;
 };

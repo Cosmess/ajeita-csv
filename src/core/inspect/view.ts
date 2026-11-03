@@ -1,11 +1,13 @@
 import type { Column, Dataset, DateFormat, NumberFormat } from "../dataset";
 import { parseDate, parseNumber } from "../parse/values";
+import { isValid, type ValidationRule } from "../validate";
 import { NormalizedColumns, normalizeText } from "./normalize";
 
 export type SortKey = { column: number; direction: "asc" | "desc" };
 
-export type FilterOp = "contains" | "equals" | "startsWith" | "empty" | "notEmpty";
-export type Filter = { column: number; op: FilterOp; value?: string };
+export type FilterOp = "contains" | "equals" | "startsWith" | "empty" | "notEmpty" | "invalid";
+// `rule`: regra de validação usada pelo filtro "invalid".
+export type Filter = { column: number; op: FilterOp; value?: string; rule?: ValidationRule };
 
 export type ViewSpec = { sort: SortKey[]; filters: Filter[] };
 
@@ -33,6 +35,10 @@ export function filterIndices(dataset: Dataset, filters: readonly Filter[], norm
         return (i: number) => values[i]!.trim() === "";
       case "notEmpty":
         return (i: number) => values[i]!.trim() !== "";
+      case "invalid": {
+        const rule = filter.rule ?? "required";
+        return (i: number) => !isValid(rule, dataset.rows[i]![filter.column] ?? "");
+      }
     }
   });
 

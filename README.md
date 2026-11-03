@@ -15,7 +15,7 @@ Resolve os problemas mais comuns de quem lida com planilhas no dia a dia: acento
 | 1. Base | Projeto WXT + React + TypeScript, side panel, worker, testes | ✅ Concluída |
 | 2. Parse e grade | Detecção de encoding/delimitador/cabeçalho, leitura de `.xlsx`, grade virtualizada, ordenar/filtrar/buscar, resumo por coluna, exportação CSV e Excel BR | ✅ Concluída |
 | 3. Corrigir | Acentos quebrados, painel de problemas, edição de células, desfazer/refazer, sessão salva | ✅ Concluída |
-| 4. Formatar e limpar | Limpeza, conversões (datas, números, CPF/CNPJ, telefone, CEP), colunas, validação, localizar e substituir | ⏳ |
+| 4. Formatar e limpar | Limpeza, conversões (datas, números, CPF/CNPJ, telefone, CEP), colunas, validação, localizar e substituir | ✅ Concluída |
 | 5. Criar | Grade vazia, CSV a partir da página (seleção e tabela), JSON, geração de SQL | ⏳ |
 | 6. Exportações e arquivos | `.xlsx`, TSV, área de transferência, dividir e juntar arquivos | ⏳ |
 | 7. Publicação | Ícones, textos, política de privacidade, pacote para a loja | ⏳ |
@@ -36,7 +36,12 @@ Resolve os problemas mais comuns de quem lida com planilhas no dia a dia: acento
    - **Editar uma célula:** clique duas vezes, digite e confirme com Enter (Esc cancela).
    - **Aplicar ordenação:** a ordenação da grade é só visual; o link **Aplicar aos dados** grava a nova ordem.
    - **Desfazer e refazer:** botões ↶ ↷ ou ⌘Z / ⌘⇧Z (Ctrl+Z / Ctrl+Y no Windows). Toda alteração pode ser desfeita.
-6. Clique em **Exportar**, escolha o formato (**Excel em português** ou **CSV padrão**) e salve. Em "Opções avançadas" dá para trocar encoding (inclusive Windows-1252), separador, quebra de linha e aspas. Com filtro ou ordenação ativos, você escolhe se exporta o arquivo inteiro ou só o que está na tela.
+6. Para formatar e limpar:
+   - **Menu Ajeitar ▾** (ao lado da busca): limpeza (espaços extras, maiúsculas/minúsculas, acentos, linhas duplicadas, linhas e colunas vazias), conversões (datas, números, CPF/CNPJ, telefones, CEP), dividir e juntar colunas, e localizar e substituir. Escolha as colunas, ajuste as opções e confira a **prévia** antes de aplicar; o que não for reconhecido fica como está e aparece listado.
+   - **Menu ⋯ de cada coluna:** renomear, resumo, filtrar, formatar, **validar como** (CPF, CNPJ, e-mail, CEP, telefone, obrigatório), dividir, duplicar, mover e excluir.
+   - **Validação:** as células inválidas ficam sublinhadas em vermelho e o cabeçalho mostra quantas são (✗ 12). Clique no contador para ver só as inválidas.
+   - **Reordenar colunas:** arraste o cabeçalho.
+7. Clique em **Exportar**, escolha o formato (**Excel em português** ou **CSV padrão**) e salve. Em "Opções avançadas" dá para trocar encoding (inclusive Windows-1252), separador, quebra de linha e aspas. Com filtro ou ordenação ativos, você escolhe se exporta o arquivo inteiro ou só o que está na tela.
 
 A extensão lembra a última escolha de exportação. O arquivo aberto e o histórico de alterações ficam salvos neste navegador: ao abrir o painel de novo, você pode **continuar de onde parou**. Para apagar, use ⚙ → **Limpar dados salvos**.
 
@@ -57,13 +62,15 @@ A extensão lembra a última escolha de exportação. O arquivo aberto e o hist�
 - **Desfazer/refazer** qualquer alteração (até 100 passos).
 - **Sessão salva** no navegador para retomar o trabalho depois de fechar o painel.
 
-### Formatar e limpar
-- Remover espaços extras, linhas duplicadas, linhas e colunas vazias, acentos; trocar maiúsculas/minúsculas.
-- Converter **datas** (`dd/MM/yyyy`, ISO, `MM/dd/yyyy`) e **números** (`1.234,56` ↔ `1234.56`, sem `R$`).
-- **CPF e CNPJ** (incluindo o novo CNPJ alfanumérico): colocar ou tirar máscara, recuperar zeros à esquerda e validar dígito verificador.
-- **Telefone**: normalizar para `(11) 91234-5678`, só dígitos ou `+5511912345678`.
-- **CEP**: `01310100` ↔ `01310-100`.
-- Renomear, reordenar, dividir e juntar colunas; localizar e substituir (com expressões regulares).
+### Formatar e limpar ✅
+- Remover espaços extras, linhas duplicadas (inteiras ou por colunas-chave), linhas e colunas vazias, acentos; trocar maiúsculas/minúsculas (com "da", "de", "dos" em minúsculas nos nomes).
+- Converter **datas** (`dd/mm/aaaa`, ISO, `mm/dd/aaaa`, com ou sem hora) e **números** (`1.234,56` ↔ `1234.56`, com ou sem `R$`).
+- **CPF e CNPJ** (incluindo o **CNPJ alfanumérico**): colocar ou tirar máscara, recuperar zeros à esquerda perdidos no Excel (decidindo entre CPF e CNPJ pelo dígito verificador) e apontar valores em notação científica, que não têm conserto.
+- **Telefone**: normalizar para `(11) 91234-5678`, só dígitos ou `+5511912345678`, tratando `+55`, prefixo `0` com operadora, 9º dígito, DDD padrão e números como `0800` e `190`.
+- **CEP**: `01310100` ↔ `01310-100`, recuperando o zero perdido.
+- **Validação** de CPF, CNPJ, e-mail, CEP, telefone e campos obrigatórios, com destaque e filtro dos inválidos.
+- Renomear, reordenar (arrastando), duplicar, excluir, dividir e juntar colunas.
+- **Localizar e substituir**, com expressões regulares (`$1`, `$2`). Uma expressão que demore mais de 10 segundos é interrompida e o arquivo volta ao estado anterior.
 
 ### Criar
 - Planilha em branco editável.
@@ -130,6 +137,8 @@ src/
     history.ts         # pilha de desfazer/refazer
     preview.ts         # prévia padrão: totais, antes → depois, não reconhecidos
     fix/               # acentos quebrados e problemas de estrutura
+    transform/         # limpeza, conversões, colunas e localizar e substituir
+    validate/          # CPF, CNPJ (inclusive alfanumérico), e-mail, CEP, telefone, DDDs
     parse/             # detecção de encoding, delimitador, cabeçalho e tipos; leitura de CSV e .xlsx
     inspect/           # ordenação, filtro, busca e resumo por coluna (retornam índices de linhas)
     export/            # serialização CSV e encoder Windows-1252
@@ -180,6 +189,9 @@ Princípios que guiam o código:
 | Filtrar / buscar em todas as colunas | 0,3 / 1,2 s | 2 s |
 | Resumo de uma coluna | 0,7 s | 2 s |
 | Exportar Excel BR / Windows-1252 | 4,1 / 5,0 s | 10 s |
+| Prévia de uma transformação numa coluna (espaços, CPF, telefone, data, número) | 0,4 a 0,7 s | 1 s |
+| Aplicar a transformação | 0,5 a 1,6 s | 3 s |
+| Dividir uma coluna | 0,7 s | 3 s |
 
 Na interface (Chrome, 1 milhão de linhas): editar uma célula leva ~0,5 s, desfazer ~0,45 s e restaurar a sessão salva ~1,3 s.
 
