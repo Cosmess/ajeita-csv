@@ -1,0 +1,2 @@
+# Fixtures têm encoding, BOM e quebras de linha propositais: o git não deve convertê-los.
+tests/fixtures/** -text

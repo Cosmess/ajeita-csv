@@ -157,3 +157,6 @@ stats.html
 
 # Fixtures grandes geradas por script
 tests/fixtures/generated/
+
+# macOS
+.DS_Store

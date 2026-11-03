@@ -1,0 +1,9 @@
+id,nome,endereco,observacao
+1,Maria,"Rua A, 100",ok
+2,João,"Av. Brasil, 200
+apto 31",quebra de linha dentro do campo (válido)
+3,Ana,Rua C,colunas a mais,extra,extra2
+4,Pedro,Rua D
+5,Carla,"Rua E, 500,ok
+6,Lucas,Rua F,ok
+7,Bruna,"Rua G, 700",ok

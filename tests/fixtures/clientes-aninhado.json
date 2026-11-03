@@ -1,0 +1,56 @@
+[
+  {
+    "id": 1,
+    "nome": "Maria Silva",
+    "ativo": true,
+    "endereco": {
+      "rua": "Rua A, 100",
+      "cidade": "São Paulo",
+      "uf": "SP",
+      "geo": {
+        "lat": -23.55,
+        "lng": -46.63
+      }
+    },
+    "telefones": [
+      "(11) 91234-5678",
+      "(11) 3123-4567"
+    ],
+    "pedidos": [
+      {
+        "numero": "P-001",
+        "total": 150.5
+      },
+      {
+        "numero": "P-002",
+        "total": 89.9
+      }
+    ]
+  },
+  {
+    "id": 2,
+    "nome": "João Souza",
+    "ativo": false,
+    "endereco": {
+      "rua": "Av. Brasil, 200",
+      "cidade": "Recife",
+      "uf": "PE"
+    },
+    "telefones": [],
+    "pedidos": [
+      {
+        "numero": "P-003",
+        "total": 1200
+      }
+    ]
+  },
+  {
+    "id": 3,
+    "nome": "Ana Lima",
+    "ativo": true,
+    "endereco": null,
+    "telefones": [
+      "(81) 99876-5432"
+    ]
+  }
+]
