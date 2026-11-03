@@ -3,7 +3,12 @@ import type { ColumnSummary as Summary } from "../../core/inspect/summary";
 import type { Filter, SortKey, ViewSpec } from "../../core/inspect/view";
 import type { ParseOverrides } from "../../core/parse";
 import type { Preview } from "../../core/preview";
+import { browser } from "wxt/browser";
+import { rowsFromText } from "../../core/create/selection";
+import { detectHeader } from "../../core/parse/header";
 import type { ValidationRule } from "../../core/validate";
+import { PAGE_IMPORT_KEY, type PageImport } from "../../shared/page-import";
+import { PasteDialog } from "../../ui/components/PasteDialog";
 import type { SessionSummary } from "../../storage/session";
 import { ACTIONS, type ActionDef } from "../../ui/actions";
 import { ActionDialog } from "../../ui/components/ActionDialog";
@@ -28,7 +33,7 @@ import type { DatasetInfo, OpenProgress, OpenResult, Operation } from "../../wor
 
 type Screen =
   | { kind: "empty" }
-  | { kind: "loading"; fileName: string; progress: OpenProgress }
+  | { kind: "loading"; fileName: string; progress: OpenProgress; message?: string }
   | { kind: "choose-sheet"; file: File; sheets: string[] }
   | { kind: "ready" };
 
@@ -96,6 +101,9 @@ export function App() {
   const [columnMenu, setColumnMenu] = useState<{ column: number; anchor: { left: number; top: number } }>();
   const [validations, setValidations] = useState<Partial<Record<number, ValidationRule>>>({});
   const [invalidCounts, setInvalidCounts] = useState<Partial<Record<number, number>>>({});
+  const [pasting, setPasting] = useState(false);
+  const [confirmImport, setConfirmImport] = useState<Extract<PageImport, { status: "ready" }>>();
+  const handledImport = useRef(0);
   const [dragging, setDragging] = useState(false);
   // Muda a cada arquivo aberto: a grade é recriada e volta ao topo.
   const [gridKey, setGridKey] = useState(0);
@@ -129,6 +137,84 @@ export function App() {
   }, []);
 
   const restoreScreen = useCallback(() => setScreen(info ? { kind: "ready" } : { kind: "empty" }), [info]);
+
+  // Cria dados novos no worker (grade vazia, colados, da página) e mostra.
+  const create = useCallback(
+    async (request: () => Promise<DatasetInfo>) => {
+      setBusy(true);
+      setError(undefined);
+      setNotice(undefined);
+      try {
+        applyInfo(await request(), true);
+        setSaved(undefined);
+      } catch (e) {
+        setError(message(e));
+        restoreScreen();
+      } finally {
+        setBusy(false);
+      }
+    },
+    [applyInfo, restoreScreen],
+  );
+
+  const createFromText = (text: string) => {
+    setPasting(false);
+    if (/^\s*[[{]/.test(text)) {
+      void create(() => client.request("createFromJson", { name: "dados-colados.json", text }));
+      return;
+    }
+    const rows = rowsFromText(text);
+    void create(() => client.request("createFromRows", { name: "dados-colados.csv", rows, hasHeader: detectHeader(rows) }));
+  };
+
+  const importFromPage = useCallback(
+    (data: Extract<PageImport, { status: "ready" }>) => {
+      setConfirmImport(undefined);
+      const base = data.title.replace(/[\\/:*?"<>|]+/g, " ").trim().slice(0, 60) || (data.kind === "table" ? "tabela" : "selecao");
+      void create(() => client.request("createFromRows", { name: `${base}.csv`, rows: data.rows, hasHeader: data.hasHeader }));
+    },
+    [client, create],
+  );
+
+  // Dados vindos da página pelo menu de contexto (o service worker grava em storage.session).
+  const hasEdits = Boolean(info?.undo);
+  useEffect(() => {
+    const handle = (data: PageImport | undefined) => {
+      if (!data || data.id < handledImport.current) return;
+      if (data.status === "working") {
+        setScreen({
+          kind: "loading",
+          fileName: "",
+          progress: { fraction: 0 },
+          message:
+            data.kind === "table"
+              ? "Lendo a tabela da página… Se houver várias, clique na que você quer importar (Esc cancela)."
+              : "Lendo o texto selecionado…",
+        });
+        return;
+      }
+      handledImport.current = data.id + 1;
+      void browser.storage.session.remove(PAGE_IMPORT_KEY);
+      if (data.status === "ready") {
+        if (hasEdits) {
+          restoreScreen();
+          setConfirmImport(data);
+        } else importFromPage(data);
+      } else {
+        restoreScreen();
+        if (data.status === "error") setError(data.message);
+        else setNotice(data.message);
+      }
+    };
+    // Fora da extensão (ex.: página de teste) não há storage.session.
+    if (!browser?.storage?.session) return;
+    void browser.storage.session.get(PAGE_IMPORT_KEY).then((stored) => handle(stored[PAGE_IMPORT_KEY] as PageImport | undefined));
+    const listener = (changes: Record<string, { newValue?: unknown }>, area: string) => {
+      if (area === "session" && changes[PAGE_IMPORT_KEY]) handle(changes[PAGE_IMPORT_KEY].newValue as PageImport | undefined);
+    };
+    browser.storage.onChanged.addListener(listener);
+    return () => browser.storage.onChanged.removeListener(listener);
+  }, [hasEdits, importFromPage, restoreScreen]);
 
   const openFile = useCallback(
     async (file: File, sheet?: string) => {
@@ -485,6 +571,23 @@ export function App() {
         </div>
       )}
 
+      {confirmImport && (
+        <div className="banner warn" role="alertdialog" aria-label="Confirmar importação">
+          <span>
+            Abrir os dados da página ({formatCount(confirmImport.rows.length)} linhas)? As alterações no arquivo aberto serão
+            descartadas.
+          </span>
+          <span className="banner-actions">
+            <button type="button" className="button" onClick={() => setConfirmImport(undefined)}>
+              Cancelar
+            </button>
+            <button type="button" className="button primary" onClick={() => importFromPage(confirmImport)}>
+              Abrir
+            </button>
+          </span>
+        </div>
+      )}
+
       {screen.kind === "empty" && (
         <>
           {saved && (
@@ -495,10 +598,17 @@ export function App() {
               onDiscard={() => void clearSaved()}
             />
           )}
-          <EmptyState onFile={(file) => void openFile(file)} />
+          <EmptyState
+            onFile={(file) => void openFile(file)}
+            onBlank={() => void create(() => client.request("createBlank", { columns: 3, rows: 10 }))}
+            onPaste={() => setPasting(true)}
+          />
         </>
       )}
-      {screen.kind === "loading" && <LoadingView fileName={screen.fileName} progress={screen.progress} />}
+      {screen.kind === "loading" && (
+        <LoadingView fileName={screen.fileName} progress={screen.progress} message={screen.message} />
+      )}
+      {pasting && <PasteDialog onSubmit={createFromText} onClose={() => setPasting(false)} />}
       {screen.kind === "choose-sheet" && (
         <SheetPicker
           fileName={screen.file.name}
@@ -538,7 +648,14 @@ export function App() {
             </div>
           )}
           <div className="toolbar">
-            <ActionsMenu disabled={busy} onPick={(def) => setAction({ def })} />
+            <ActionsMenu
+              disabled={busy}
+              onPick={(def) =>
+                def.direct
+                  ? void execute(def.toOp({}, { rowCount: info.rowCount, columnCount: info.columns.length }))
+                  : setAction({ def })
+              }
+            />
             <SearchBar
             query={search.query}
             searching={search.searching}
@@ -604,6 +721,8 @@ export function App() {
               onFilterInvalid={(column) => setFilter({ column, op: "invalid", rule: validations[column] })}
               onColumnMenu={(column, anchor) => setColumnMenu({ column, anchor })}
               onMoveColumn={(from, to) => void execute({ op: "moveColumn", params: { from, to } })}
+              onPaste={(row, column, text) => void execute({ op: "paste", params: { row, column, text } })}
+              onDeleteRow={(row) => void execute({ op: "deleteRows", params: { rows: [row] } })}
               onEditCell={(row, column, value) => void execute({ op: "editCell", params: { row, column, value } })}
             />
             {drawer?.kind === "summary" && (
@@ -672,6 +791,7 @@ export function App() {
               onSplit={() => setAction({ def: ACTIONS.find((a) => a.id === "splitColumn")!, column: columnMenu.column })}
               onRename={(name) => void execute({ op: "renameColumn", params: { column: columnMenu.column, name } })}
               onDuplicate={() => void execute({ op: "duplicateColumn", params: { column: columnMenu.column } })}
+              onInsert={() => void execute({ op: "addColumn", params: { index: columnMenu.column + 1 } })}
               onMove={(to) => void execute({ op: "moveColumn", params: { from: columnMenu.column, to } })}
               onDelete={() => void execute({ op: "deleteColumns", params: { columns: [columnMenu.column] } })}
               onValidate={(rule) =>
@@ -715,6 +835,7 @@ export function App() {
           {action && (
             <ActionDialog
               action={action.def}
+              context={{ rowCount: info.rowCount, columnCount: info.columns.length }}
               columns={info.columns}
               column={action.column}
               onSubmit={(op) => {

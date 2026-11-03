@@ -12,7 +12,10 @@ export type Field =
   | { kind: "text"; key: string; label: string; initial?: string; placeholder?: string; error?: (values: Values) => string | undefined }
   | { kind: "number"; key: string; label: string; initial: number; min: number; max: number };
 
-export type ActionGroup = "Limpeza" | "Conversões" | "Colunas" | "Localizar";
+export type ActionGroup = "Editar" | "Limpeza" | "Conversões" | "Colunas" | "Localizar";
+
+// Tamanho atual dos dados, para ações que atuam no fim (ex.: adicionar linha).
+export type ActionContext = { rowCount: number; columnCount: number };
 
 export type ActionDef = {
   id: string;
@@ -20,7 +23,9 @@ export type ActionDef = {
   label: string;
   hint?: string;
   fields: Field[];
-  toOp: (values: Values) => Operation;
+  toOp: (values: Values, context: ActionContext) => Operation;
+  // Aplicada direto, sem formulário nem prévia (o efeito é óbvio e pode ser desfeito).
+  direct?: boolean;
 };
 
 const columns = (label = "Colunas"): Field => ({ kind: "columns", key: "columns", label });
@@ -33,6 +38,24 @@ const DOCUMENT_MODE: [string, string][] = [
 ];
 
 export const ACTIONS: ActionDef[] = [
+  // --- Editar ---
+  {
+    id: "addRow",
+    group: "Editar",
+    label: "Adicionar linha no fim",
+    fields: [],
+    direct: true,
+    toOp: (_, { rowCount }) => ({ op: "insertRows", params: { index: rowCount, count: 1 } }),
+  },
+  {
+    id: "addColumn",
+    group: "Editar",
+    label: "Adicionar coluna no fim",
+    fields: [],
+    direct: true,
+    toOp: (_, { columnCount }) => ({ op: "addColumn", params: { index: columnCount } }),
+  },
+
   // --- Limpeza ---
   {
     id: "trimSpaces",
@@ -326,6 +349,7 @@ export const ACTIONS: ActionDef[] = [
 ];
 
 export const ACTION_GROUPS: { group: ActionGroup; label: string }[] = [
+  { group: "Editar", label: "Editar" },
   { group: "Limpeza", label: "Limpeza" },
   { group: "Conversões", label: "Formatar e converter" },
   { group: "Colunas", label: "Colunas" },

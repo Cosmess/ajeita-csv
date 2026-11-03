@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { DELIMITERS, type Delimiter } from "../../core/dataset";
 import { EXPORT_PRESETS, type CsvExportOptions, type ExportEncoding, type ExportPreset, type LineEnding } from "../../core/export/csv";
 import type { UnencodablePolicy } from "../../core/export/windows1252";
+import { SQL_DIALECT_LABELS, sqlName, type SqlDialect, type SqlMode, type SqlOptions } from "../../core/create/sql";
 import type { ExportScope } from "../../workers/protocol";
 import { DELIMITER_LABELS, EXPORT_ENCODING_LABELS, LINE_ENDING_LABELS, formatCount } from "../labels";
 import { loadExportPreferences, saveExportPreferences } from "../preferences";
@@ -30,7 +31,22 @@ type Props = {
   onSaved: (fileName: string) => void;
 };
 
+const SQL_MODES: [SqlMode, string, SqlDialect | undefined][] = [
+  ["insert", "CREATE TABLE + INSERTs", undefined],
+  ["copy", "COPY (psql, mais rápido para muitos dados)", "postgres"],
+  ["bulk", "BULK INSERT (lê um CSV no servidor)", "sqlserver"],
+];
+
 export function ExportDialog({ fileName, rowCount, viewCount, viewChanged, onClose, onSaved }: Props) {
+  const [format, setFormat] = useState<"csv" | "sql">("csv");
+  const [sql, setSql] = useState<SqlOptions>(() => ({
+    dialect: "postgres",
+    mode: "insert",
+    table: sqlName(fileName.replace(/\.[^.]+$/, ""), "dados"),
+    createTable: true,
+    normalizeNames: true,
+  }));
+  const [sqlPreview, setSqlPreview] = useState<{ text: string; columns: { name: string; type: string }[] }>();
   const [preset, setPreset] = useState<ExportPreset>("excel-br");
   const [options, setOptions] = useState<CsvExportOptions>(EXPORT_PRESETS["excel-br"]);
   const [scope, setScope] = useState<ExportScope>("all");
@@ -45,7 +61,41 @@ export function ExportDialog({ fileName, rowCount, viewCount, viewChanged, onClo
     });
   }, [fileName]);
 
+  const updateSql = (patch: Partial<SqlOptions>) => {
+    setSqlPreview(undefined);
+    setSql((current) => {
+      const next = { ...current, ...patch };
+      // Modos específicos de um banco voltam para INSERTs quando o banco muda.
+      const mode = SQL_MODES.find(([m]) => m === next.mode);
+      if (mode?.[2] && mode[2] !== next.dialect) next.mode = "insert";
+      return next;
+    });
+  };
+  const sqlName_ = `${fileName.replace(/\.[^.]+$/, "") || "dados"}.sql`;
+
+  async function loadSqlPreview() {
+    try {
+      setSqlPreview(await getWorkerClient().request("previewSql", { options: sql, scope }));
+    } catch (error) {
+      setStep({ kind: "error", message: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  async function saveSql() {
+    const target = await pickSaveTarget(sqlName_);
+    if (target === "cancelled") return;
+    setStep({ kind: "working", message: "Gerando o SQL…" });
+    try {
+      const { bytes } = await getWorkerClient().request("exportSql", { options: sql, scope });
+      await writeToTarget(target, bytes as Uint8Array<ArrayBuffer>, sqlName_);
+      onSaved(sqlName_);
+    } catch (error) {
+      setStep({ kind: "error", message: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
   const choosePreset = (next: ExportPreset) => {
+    setFormat("csv");
     setPreset(next);
     setOptions(EXPORT_PRESETS[next]);
     setName(suggestName(fileName, next, EXPORT_PRESETS[next].delimiter));
@@ -119,27 +169,93 @@ export function ExportDialog({ fileName, rowCount, viewCount, viewChanged, onClo
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              void start();
+              void (format === "sql" ? saveSql() : start());
             }}
           >
             <fieldset className="presets">
               <legend>Formato</legend>
               <label className="radio">
-                <input type="radio" checked={preset === "excel-br"} onChange={() => choosePreset("excel-br")} />
+                <input type="radio" checked={format === "csv" && preset === "excel-br"} onChange={() => choosePreset("excel-br")} />
                 <span>
                   <strong>Excel em português</strong>
                   <span className="muted small"> — ponto e vírgula, vírgula decimal, UTF-8 com BOM</span>
                 </span>
               </label>
               <label className="radio">
-                <input type="radio" checked={preset === "csv"} onChange={() => choosePreset("csv")} />
+                <input type="radio" checked={format === "csv" && preset === "csv"} onChange={() => choosePreset("csv")} />
                 <span>
                   <strong>CSV padrão</strong>
                   <span className="muted small"> — vírgula, UTF-8 sem BOM, para sistemas e bancos de dados</span>
                 </span>
               </label>
+              <label className="radio">
+                <input type="radio" checked={format === "sql"} onChange={() => setFormat("sql")} />
+                <span>
+                  <strong>SQL</strong>
+                  <span className="muted small"> — script para criar a tabela e inserir os dados</span>
+                </span>
+              </label>
             </fieldset>
 
+            {format === "sql" && (
+              <fieldset className="sql-options">
+                <legend>SQL</legend>
+                <label>
+                  Banco de dados
+                  <select value={sql.dialect} onChange={(e) => updateSql({ dialect: e.target.value as SqlDialect })}>
+                    {Object.entries(SQL_DIALECT_LABELS).map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Como inserir
+                  <select value={sql.mode} onChange={(e) => updateSql({ mode: e.target.value as SqlMode })}>
+                    {SQL_MODES.filter(([, , only]) => !only || only === sql.dialect).map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Nome da tabela
+                  <input value={sql.table} onChange={(e) => updateSql({ table: e.target.value })} required />
+                </label>
+                <label className="checkbox">
+                  <input type="checkbox" checked={sql.createTable} onChange={(e) => updateSql({ createTable: e.target.checked })} />
+                  Incluir CREATE TABLE (tipos detectados pelos dados)
+                </label>
+                <label className="checkbox">
+                  <input
+                    type="checkbox"
+                    checked={sql.normalizeNames}
+                    onChange={(e) => updateSql({ normalizeNames: e.target.checked })}
+                  />
+                  Nomes sem acentos e espaços (data_de_cadastro)
+                </label>
+                <button type="button" className="button" onClick={() => void loadSqlPreview()}>
+                  Ver prévia do SQL
+                </button>
+                {sqlPreview && (
+                  <>
+                    <ul className="sql-columns small">
+                      {sqlPreview.columns.map((c) => (
+                        <li key={c.name}>
+                          <code>{c.name}</code> <span className="muted">{c.type}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    <pre className="sql-preview">{sqlPreview.text}</pre>
+                    <p className="muted small">Prévia com as 5 primeiras linhas.</p>
+                  </>
+                )}
+              </fieldset>
+            )}
+
+            {format === "csv" && (
             <details className="advanced">
               <summary>Opções avançadas</summary>
               <label>
@@ -191,6 +307,7 @@ export function ExportDialog({ fileName, rowCount, viewCount, viewChanged, onClo
                 Converter números 1234.56 para 1234,56
               </label>
             </details>
+            )}
 
             {viewChanged && (
               <fieldset>
@@ -206,10 +323,12 @@ export function ExportDialog({ fileName, rowCount, viewCount, viewChanged, onClo
               </fieldset>
             )}
 
-            <label>
-              Nome do arquivo
-              <input value={name} onChange={(e) => setName(e.target.value)} required />
-            </label>
+            {format === "csv" && (
+              <label>
+                Nome do arquivo
+                <input value={name} onChange={(e) => setName(e.target.value)} required />
+              </label>
+            )}
 
             {step.kind === "working" && <p className="muted">{step.message}</p>}
             {step.kind === "error" && <p className="error">Não foi possível exportar: {step.message}</p>}

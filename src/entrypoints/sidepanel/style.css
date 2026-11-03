@@ -226,6 +226,27 @@ label.radio {
   margin: 0;
 }
 
+.create-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.paste-area {
+  width: 100%;
+  margin: 8px 0;
+  padding: 6px;
+  font: 0.85rem ui-monospace, SFMono-Regular, Menlo, monospace;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  resize: vertical;
+}
+
 .empty-title {
   font-size: 1.1rem;
   font-weight: 600;
@@ -712,6 +733,30 @@ input[aria-invalid="true"] {
   white-space: pre;
 }
 
+.grid-scroll:focus {
+  outline: none;
+}
+
+.grid-cell.selected {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.row-delete {
+  display: none;
+  margin-right: auto;
+  padding: 0 4px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--error);
+  font: inherit;
+  cursor: pointer;
+}
+
+.grid-row:hover .row-delete {
+  display: inline-block;
+}
+
 .grid-cell.loading {
   background: var(--bg-subtle);
 }
@@ -1051,6 +1096,8 @@ input[aria-invalid="true"] {
 }
 
 .modal fieldset {
+  /* Por padrão um fieldset cresce até caber o conteúdo mais largo (ex.: linhas do SQL). */
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -1082,6 +1129,28 @@ input[aria-invalid="true"] {
   justify-content: flex-end;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.sql-options pre,
+.sql-preview {
+  max-width: 100%;
+  max-height: 220px;
+  margin: 0;
+  padding: 8px;
+  overflow: auto;
+  border-radius: 6px;
+  background: var(--bg-subtle);
+  font-size: 0.75rem;
+  white-space: pre;
+}
+
+.sql-columns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
 .unencodable {
