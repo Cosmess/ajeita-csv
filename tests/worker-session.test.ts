@@ -193,4 +193,21 @@ describe("sessão do worker", () => {
     await session.discardSaved();
     expect(await session.savedSession()).toBeUndefined();
   });
+
+  it("conta inválidos e usa a regra no resumo e no filtro", async () => {
+    const { session } = await openCsv("documentos-cpf-cnpj.csv");
+    expect(session.countInvalid(1, "cpfCnpj")).toBe(11);
+    expect(session.summarize(1, "all", "cpfCnpj").invalid).toBe(11);
+    const view = session.setView({ sort: [], filters: [{ column: 1, op: "invalid", rule: "cpfCnpj" }] });
+    expect(view.viewCount).toBe(11);
+  });
+
+  it("limpa filtros e ordenação quando as colunas mudam, mas não em outras alterações", async () => {
+    const { session } = await openCsv("clientes-utf8-virgula.csv");
+    session.setView({ sort: [{ column: 0, direction: "asc" }], filters: [{ column: 4, op: "equals", value: "SP" }] });
+    expect(session.execute({ op: "trimSpaces", params: { columns: [0] } }).view.filters).toHaveLength(1);
+    const moved = session.execute({ op: "moveColumn", params: { from: 4, to: 0 } });
+    expect(moved.view).toEqual({ sort: [], filters: [] });
+    expect(moved.columns[0]!.name).toBe("uf");
+  });
 });

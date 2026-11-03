@@ -14,6 +14,7 @@ import { detectHeader } from "../core/parse/header";
 import { readSheetRows, readWorkbook, type Workbook } from "../core/parse/xlsx";
 import { previewPlan, type Preview } from "../core/preview";
 import { indexedDbStore, type SessionStore, type SessionSummary } from "../storage/session";
+import { countInvalid, type ValidationRule } from "../core/validate";
 import type { DatasetInfo, ExportScope, OpenProgress, OpenResult, ProblemItem } from "./protocol";
 
 const ZIP_MAGIC = [0x50, 0x4b, 0x03, 0x04];
@@ -182,8 +183,12 @@ export class WorkerSession {
     return { position: matches[index * 2]!, column: matches[index * 2 + 1]! };
   }
 
-  summarize(column: number, scope: ExportScope) {
-    return summarizeColumn(this.requireDataset(), column, scope === "view" ? this.view : undefined);
+  summarize(column: number, scope: ExportScope, rule?: ValidationRule) {
+    return summarizeColumn(this.requireDataset(), column, scope === "view" ? this.view : undefined, rule);
+  }
+
+  countInvalid(column: number, rule: ValidationRule): number {
+    return countInvalid(this.requireDataset().rows, column, rule);
   }
 
   // --- Exportação ------------------------------------------------------------
@@ -239,6 +244,9 @@ export class WorkerSession {
   }
 
   private change(dataset: Dataset, history: History, persist = true): void {
+    // Filtros e ordenação apontam colunas pela posição: se as colunas mudaram, deixam de valer.
+    const columnsKey = (d: Dataset) => d.columns.map((c) => c.name).join("\u0000");
+    if (this.dataset && persist && columnsKey(this.dataset) !== columnsKey(dataset)) this.viewSpec = EMPTY_VIEW;
     this.dataset = dataset;
     this.history = history;
     this.normalized = new NormalizedColumns(dataset);

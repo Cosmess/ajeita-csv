@@ -13,6 +13,8 @@ export type WorkerClient = {
     params: RequestParams<T>,
     onProgress?: (progress: RequestProgress<T>) => void,
   ): Promise<RequestResult<T>>;
+  // Rejeita as requisições pendentes (o worker foi encerrado).
+  dispose(reason: string): void;
 };
 
 type Pending = {
@@ -39,6 +41,10 @@ export function createWorkerClient(endpoint: MessageEndpoint): WorkerClient {
   });
 
   return {
+    dispose(reason) {
+      for (const entry of pending.values()) entry.reject(new Error(reason));
+      pending.clear();
+    },
     request(type, params, onProgress) {
       const id = nextId++;
       return new Promise((resolve, reject) => {
