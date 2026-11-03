@@ -17,7 +17,7 @@ Resolve os problemas mais comuns de quem lida com planilhas no dia a dia: acento
 | 3. Corrigir | Acentos quebrados, painel de problemas, edição de células, desfazer/refazer, sessão salva | ✅ Concluída |
 | 4. Formatar e limpar | Limpeza, conversões (datas, números, CPF/CNPJ, telefone, CEP), colunas, validação, localizar e substituir | ✅ Concluída |
 | 5. Criar | Grade vazia, CSV a partir da página (seleção e tabela), JSON, geração de SQL | ✅ Concluída |
-| 6. Exportações e arquivos | `.xlsx`, TSV, área de transferência, dividir e juntar arquivos | ⏳ |
+| 6. Exportações e arquivos | `.xlsx`, TSV, área de transferência, dividir e juntar arquivos | ✅ Concluída |
 | 7. Publicação | Ícones, textos, política de privacidade, pacote para a loja | ⏳ |
 
 ## Como usar
@@ -43,7 +43,8 @@ Resolve os problemas mais comuns de quem lida com planilhas no dia a dia: acento
    - **Menu ⋯ de cada coluna:** renomear, resumo, filtrar, formatar, **validar como** (CPF, CNPJ, e-mail, CEP, telefone, obrigatório), dividir, duplicar, mover e excluir.
    - **Validação:** as células inválidas ficam sublinhadas em vermelho e o cabeçalho mostra quantas são (✗ 12). Clique no contador para ver só as inválidas.
    - **Reordenar colunas:** arraste o cabeçalho.
-7. Clique em **Exportar**, escolha o formato (**Excel em português** ou **CSV padrão**) e salve. Em "Opções avançadas" dá para trocar encoding (inclusive Windows-1252), separador, quebra de linha e aspas. Com filtro ou ordenação ativos, você escolhe se exporta o arquivo inteiro ou só o que está na tela.
+7. Clique em **Exportar**, escolha o formato (**Excel em português**, **CSV padrão**, **TSV**, **planilha do Excel (.xlsx)** ou **SQL**) e salve. **Copiar para colar no Excel/Sheets** leva as linhas para a área de transferência.
+8. **Ajeitar → Arquivos:** **Dividir arquivo** (a cada N linhas ou um arquivo por valor de uma coluna, num `.zip`) e **Juntar arquivos** (vários CSV, TSV, XLSX ou JSON, com as colunas alinhadas pelo nome). "Juntar vários arquivos" também aparece na tela inicial. Em "Opções avançadas" dá para trocar encoding (inclusive Windows-1252), separador, quebra de linha e aspas. Com filtro ou ordenação ativos, você escolhe se exporta o arquivo inteiro ou só o que está na tela.
 
 A extensão lembra a última escolha de exportação. O arquivo aberto e o histórico de alterações ficam salvos neste navegador: ao abrir o painel de novo, você pode **continuar de onde parou**. Para apagar, use ⚙ → **Limpar dados salvos**.
 
@@ -85,8 +86,12 @@ A extensão lembra a última escolha de exportação. O arquivo aberto e o hist�
 - ✅ **CSV padrão**: UTF-8, vírgula, LF.
 - ✅ Opções avançadas: **Windows-1252** para sistemas legados (avisa antes quais caracteres não existem nesse encoding), separador, quebra de linha e aspas em todos os campos.
 - ✅ **SQL** (ver acima), com prévia.
-- `.xlsx` e cópia para colar no Excel/Google Sheets.
-- Dividir um arquivo grande em partes ou juntar vários arquivos num só.
+- ✅ **TSV** e **planilha do Excel (.xlsx)**: números e datas viram células de verdade (o Excel soma e ordena), enquanto CPFs, telefones e códigos com zero à esquerda ficam como texto, sem notação científica. Gera 1 milhão de linhas em ~20 s.
+- ✅ **Copiar para colar** no Excel ou no Google Sheets.
+
+### Arquivos ✅
+- **Dividir** um arquivo grande em partes de N linhas ou um arquivo por valor de coluna (ex.: por UF), com o cabeçalho em cada parte, num único `.zip`.
+- **Juntar** vários arquivos num só: cada um com seu encoding e separador detectados, colunas alinhadas pelo nome do cabeçalho e coluna opcional `arquivo_origem`.
 
 ## Instalação para desenvolvimento
 
@@ -145,7 +150,8 @@ src/
     create/            # texto selecionado, tabela da página, JSON e geração de SQL
     parse/             # detecção de encoding, delimitador, cabeçalho e tipos; leitura de CSV e .xlsx
     inspect/           # ordenação, filtro, busca e resumo por coluna (retornam índices de linhas)
-    export/            # serialização CSV e encoder Windows-1252
+    export/            # CSV, encoder Windows-1252, .xlsx (gerador próprio em fluxo) e área de transferência
+    files/             # dividir e juntar arquivos
   workers/
     csv.worker.ts      # Web Worker que executa o processamento pesado
     protocol.ts        # contrato tipado das mensagens UI ↔ worker
@@ -177,6 +183,7 @@ Princípios que guiam o código:
 - [React](https://react.dev/) + [TypeScript](https://www.typescriptlang.org/) (modo `strict`)
 - [PapaParse](https://www.papaparse.com/) — leitura e escrita de CSV
 - [SheetJS](https://sheetjs.com/) — leitura de `.xlsx`
+- [fflate](https://github.com/101arrowz/fflate) — `.zip` das partes e do `.xlsx` gerado
 - [TanStack Virtual](https://tanstack.com/virtual) — grade virtualizada em linhas e colunas
 - [Vitest](https://vitest.dev/) — testes unitários e de desempenho
 
@@ -196,6 +203,8 @@ Princípios que guiam o código:
 | Prévia de uma transformação numa coluna (espaços, CPF, telefone, data, número) | 0,4 a 0,7 s | 1 s |
 | Aplicar a transformação | 0,5 a 1,6 s | 3 s |
 | Dividir uma coluna | 0,7 s | 3 s |
+| Dividir o arquivo em 10 partes num `.zip` | 7,4 s | — |
+| Gerar `.xlsx` com 100 mil / 1 milhão de linhas | 2,3 / 21,6 s | — |
 
 Na interface (Chrome, 1 milhão de linhas): editar uma célula leva ~0,5 s, desfazer ~0,45 s e restaurar a sessão salva ~1,3 s.
 
