@@ -1,0 +1,19 @@
+descricao;documento
+CPF válido com máscara;529.982.247-25
+CPF válido sem máscara;12345678909
+CPF inválido (DV errado);987.654.321-01
+CPF repetido (inválido);111.111.111-11
+CPF que perdeu 1 zero no Excel;1234567890
+CPF que perdeu 3 zeros no Excel;12345601
+CPF em notação científica;5,29982E+10
+CNPJ válido com máscara;11.222.333/0001-81
+CNPJ válido sem máscara;45321789000110
+CNPJ inválido (DV errado);45.321.789/0001-11
+CNPJ repetido (inválido);00.000.000/0000-00
+CNPJ que perdeu 2 zeros no Excel;600000000122
+CNPJ em notação científica;1,12223E+13
+CNPJ alfanumérico válido com máscara;12.ABC.345/01DE-35
+CNPJ alfanumérico válido sem máscara;A1B2C3D4000193
+CNPJ alfanumérico em minúsculas;12abc34501de35
+CNPJ alfanumérico inválido (DV errado);12.ABC.345/01DE-36
+Texto qualquer;não informado

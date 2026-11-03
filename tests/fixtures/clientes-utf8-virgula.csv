@@ -1,0 +1,6 @@
+nome,cpf,email,cidade,uf,data_cadastro,valor_compra
+João da Silva,529.982.247-25,joao.silva@example.com,São Paulo,SP,15/03/2025,"1.234,56"
+Maria Conceição,123.456.789-09,maria@example.com.br,Belo Horizonte,MG,02/11/2024,"89,90"
+José Araújo,987.654.321-00,jose.araujo@example.com,Florianópolis,SC,28/02/2026,"15.000,00"
+Ana Lúcia Gonçalves,012.345.678-90,ana.lucia@example.com,Ribeirão Preto,SP,01/07/2025,"450,75"
+Antônio Pereira,000.123.456-01,antonio@example.org,Maceió,AL,10/10/2023,"3.210,00"

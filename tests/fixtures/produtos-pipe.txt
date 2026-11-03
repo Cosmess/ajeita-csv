@@ -1,0 +1,5 @@
+codigo|produto|categoria|preco|estoque
+0001|Café torrado 500g|Mercearia|24,90|120
+0002|Açúcar cristal 1kg|Mercearia|5,49|300
+0003|Pão de queijo congelado|Congelados|18,00|45
+0004|Guaraná 2L|Bebidas|8,99|0

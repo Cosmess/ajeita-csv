@@ -1,0 +1,15 @@
+caso;telefone
+Celular com máscara;(11) 91234-5678
+Celular só dígitos;11912345678
+Com +55;+55 11 91234-5678
+Com 55 sem +;5511912345678
+DDD 55 (Santa Maria/RS);(55) 99123-4567
+Prefixo 0 + operadora;0 21 11 91234-5678
+Prefixo 0 sem operadora;011 3123-4567
+Celular antigo sem 9º dígito;(11) 8123-4567
+Fixo;(11) 3123-4567
+Sem DDD;91234-5678
+0800;0800 123 4567
+Número curto;190
+DDD inexistente;(20) 91234-5678
+Texto;não tem
