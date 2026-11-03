@@ -23,8 +23,11 @@ export type ParseIssue = {
   message: string;
 };
 
+// Origem dos dados: arquivo CSV/TXT/TSV, planilha, JSON, ou criados no painel (grade vazia, página).
+export type DataSource = "csv" | "xlsx" | "json" | "created";
+
 export type ParseMeta = {
-  source: "csv" | "xlsx";
+  source: DataSource;
   encoding: Encoding;
   delimiter: Delimiter;
   hasHeader: boolean;
@@ -33,6 +36,8 @@ export type ParseMeta = {
   hasBom: boolean;
   issues: ParseIssue[];
   sheet?: string;
+  // JSON: campo de array que vira uma linha por item (os demais arrays são juntados com "|").
+  explode?: string;
 };
 
 export type Dataset = { columns: Column[]; rows: string[][]; meta: ParseMeta };
