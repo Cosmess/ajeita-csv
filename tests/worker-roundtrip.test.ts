@@ -39,6 +39,6 @@ describe("comunicação UI ↔ worker", () => {
 
   it("devolve erro para operação desconhecida", async () => {
     const response = await handleRequest({ id: 7, type: "inexistente", params: {} } as unknown as RequestMessage);
-    expect(response).toEqual({ id: 7, ok: false, error: "Operação desconhecida: inexistente" });
+    expect(response).toEqual({ kind: "response", id: 7, ok: false, error: "Operação desconhecida: inexistente" });
   });
 });
