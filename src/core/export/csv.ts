@@ -14,11 +14,12 @@ export type CsvExportOptions = {
   decimalComma: boolean;
 };
 
-export type ExportPreset = "excel-br" | "csv";
+export type ExportPreset = "excel-br" | "csv" | "tsv";
 
 export const EXPORT_PRESETS: Record<ExportPreset, CsvExportOptions> = {
   "excel-br": { delimiter: ";", encoding: "utf-8-bom", lineEnding: "\r\n", quoteAll: false, decimalComma: true },
   csv: { delimiter: ",", encoding: "utf-8", lineEnding: "\n", quoteAll: false, decimalComma: false },
+  tsv: { delimiter: "\t", encoding: "utf-8", lineEnding: "\n", quoteAll: false, decimalComma: false },
 };
 
 function toDecimalComma(value: string): string {
