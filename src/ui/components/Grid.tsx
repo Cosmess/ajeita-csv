@@ -1,5 +1,5 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useEffect, useMemo, useRef, type MouseEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import type { Column } from "../../core/dataset";
 import { normalizeText } from "../../core/inspect/normalize";
 import type { Filter, SortKey } from "../../core/inspect/view";
@@ -20,10 +20,17 @@ export type GridProps = {
   filters: Filter[];
   searchQuery: string;
   currentMatch?: { position: number; column: number };
+  // Linha a destacar e trazer para a tela (ex.: "ir para a linha" do painel de problemas).
+  focus?: { position: number; key: number };
+  readOnly: boolean;
   onSort: (column: number, additive: boolean) => void;
   onFilter: (column: number) => void;
   onSummary: (column: number) => void;
+  // row: índice da linha nos dados (não a posição na tela).
+  onEditCell: (row: number, column: number, value: string) => void;
 };
+
+type Editing = { position: number; column: number; row: number; value: string };
 
 function columnWidth(name: string, sample: readonly (readonly string[])[], index: number): number {
   let chars = name.length + 4; // espaço para os botões do cabeçalho
@@ -32,8 +39,19 @@ function columnWidth(name: string, sample: readonly (readonly string[])[], index
 }
 
 export function Grid(props: GridProps) {
-  const { columns, viewVersion, viewCount, sort, filters, searchQuery, currentMatch } = props;
+  const { columns, viewVersion, viewCount, sort, filters, searchQuery, currentMatch, focus } = props;
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [editing, setEditing] = useState<Editing>();
+
+  // Qualquer mudança nos dados cancela a edição em andamento.
+  useEffect(() => setEditing(undefined), [viewVersion]);
+
+  const commit = () => {
+    if (!editing) return;
+    const original = getRow(editing.position)?.cells[editing.column] ?? "";
+    if (editing.value !== original) props.onEditCell(editing.row, editing.column, editing.value);
+    setEditing(undefined);
+  };
   const { ensure, getRow } = useRowCache(viewVersion, viewCount);
 
   // Largura da coluna de numeração conforme o número de dígitos.
@@ -84,6 +102,10 @@ export function Grid(props: GridProps) {
     rowVirtualizer.scrollToIndex(currentMatch.position, { align: "center" });
     columnVirtualizer.scrollToIndex(currentMatch.column, { align: "auto" });
   }, [currentMatch, rowVirtualizer, columnVirtualizer]);
+
+  useEffect(() => {
+    if (focus) rowVirtualizer.scrollToIndex(focus.position, { align: "center" });
+  }, [focus, rowVirtualizer]);
 
   const needle = normalizeText(searchQuery.trim());
   const totalWidth = columnVirtualizer.getTotalSize() + rowNumberWidth;
@@ -152,7 +174,7 @@ export function Grid(props: GridProps) {
           return (
             <div
               key={vr.key}
-              className="grid-row"
+              className={`grid-row${focus?.position === vr.index ? " focused" : ""}`}
               role="row"
               style={{ top: HEADER_HEIGHT + vr.start, height: vr.size, width: totalWidth }}
             >
@@ -164,13 +186,35 @@ export function Grid(props: GridProps) {
                 const isCurrent = currentMatch?.position === vr.index && currentMatch.column === vc.index;
                 const isMatch = needle !== "" && value !== "" && normalizeText(value).includes(needle);
                 const className = `grid-cell${isCurrent ? " match-current" : isMatch ? " match" : ""}${row ? "" : " loading"}`;
+                const style = { left: rowNumberWidth + vc.start, width: vc.size, height: vr.size };
+                if (editing && editing.position === vr.index && editing.column === vc.index) {
+                  return (
+                    <input
+                      key={vc.key}
+                      className="grid-cell grid-editor"
+                      style={style}
+                      autoFocus
+                      value={editing.value}
+                      aria-label={`Editar ${columns[vc.index]?.name ?? ""}, linha ${(row?.index ?? 0) + 1}`}
+                      onChange={(e) => setEditing({ ...editing, value: e.target.value })}
+                      onBlur={commit}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") commit();
+                        if (e.key === "Escape") setEditing(undefined);
+                      }}
+                    />
+                  );
+                }
                 return (
                   <div
                     key={vc.key}
                     className={className}
                     role="gridcell"
-                    title={value.length > 20 ? value : undefined}
-                    style={{ left: rowNumberWidth + vc.start, width: vc.size, height: vr.size }}
+                    title={value.length > 20 ? value : props.readOnly ? undefined : "Clique duas vezes para editar"}
+                    style={style}
+                    onDoubleClick={() => {
+                      if (row && !props.readOnly) setEditing({ position: vr.index, column: vc.index, row: row.index, value });
+                    }}
                   >
                     {value}
                   </div>

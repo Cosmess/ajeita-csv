@@ -15,10 +15,11 @@ export type Column = {
 export type Encoding = "utf-8" | "windows-1252" | "iso-8859-1";
 export type Delimiter = "," | ";" | "\t" | "|";
 
-// row: índice da linha no arquivo, a partir de 0 e contando o cabeçalho.
+// Problema detectado pelo parser, que não dá para recalcular a partir dos dados.
+// row: índice em Dataset.rows (a partir de 0, sem contar o cabeçalho).
 export type ParseIssue = {
   row: number;
-  kind: "column_count" | "unclosed_quote" | "encoding";
+  kind: "unclosed_quote";
   message: string;
 };
 
@@ -27,6 +28,8 @@ export type ParseMeta = {
   encoding: Encoding;
   delimiter: Delimiter;
   hasHeader: boolean;
+  // Células originais do cabeçalho (vazio quando não há cabeçalho).
+  header: string[];
   hasBom: boolean;
   issues: ParseIssue[];
   sheet?: string;

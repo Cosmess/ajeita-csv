@@ -3,17 +3,26 @@ import type { ParseOverrides } from "../../core/parse";
 import type { DatasetInfo } from "../../workers/protocol";
 import { DELIMITER_LABELS, ENCODING_LABELS } from "../labels";
 import { OpenFileButton } from "./FileDrop";
+import { SettingsButton } from "./Settings";
 
 type Props = {
   info: DatasetInfo;
   busy: boolean;
   onReopen: (overrides: ParseOverrides, sheet?: string) => void;
+  onSetHeader: (hasHeader: boolean) => void;
+  onUndo: () => void;
+  onRedo: () => void;
   onOpenFile: (file: File) => void;
   onExport: () => void;
+  onClearSaved: () => void;
 };
 
+const isMac = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform);
+const shortcut = (key: string) => (isMac ? `⌘${key}` : `Ctrl+${key}`);
+
 // Nome do arquivo, o que foi detectado (com opção de corrigir) e as ações principais.
-export function FileBar({ info, busy, onReopen, onOpenFile, onExport }: Props) {
+export function FileBar(props: Props) {
+  const { info, busy, onReopen, onOpenFile, onExport } = props;
   const { meta } = info;
   const isCsv = meta.source === "csv";
   const encoding: Encoding = meta.encoding === "iso-8859-1" ? "windows-1252" : meta.encoding;
@@ -25,10 +34,31 @@ export function FileBar({ info, busy, onReopen, onOpenFile, onExport }: Props) {
           {info.fileName}
         </strong>
         <div className="file-actions">
+          <button
+            type="button"
+            className="grid-icon history-button"
+            disabled={busy || !info.undo}
+            aria-label={info.undo ? `Desfazer: ${info.undo}` : "Desfazer"}
+            title={info.undo ? `Desfazer: ${info.undo} (${shortcut("Z")})` : "Nada para desfazer"}
+            onClick={props.onUndo}
+          >
+            ↶
+          </button>
+          <button
+            type="button"
+            className="grid-icon history-button"
+            disabled={busy || !info.redo}
+            aria-label={info.redo ? `Refazer: ${info.redo}` : "Refazer"}
+            title={info.redo ? `Refazer: ${info.redo} (${shortcut("⇧Z")})` : "Nada para refazer"}
+            onClick={props.onRedo}
+          >
+            ↷
+          </button>
           <OpenFileButton onFile={onOpenFile} label="Abrir outro" primary={false} />
           <button type="button" className="button primary" onClick={onExport} disabled={busy}>
             Exportar
           </button>
+          <SettingsButton onClearSaved={props.onClearSaved} />
         </div>
       </div>
       <div className="file-options">
@@ -81,7 +111,7 @@ export function FileBar({ info, busy, onReopen, onOpenFile, onExport }: Props) {
             type="checkbox"
             checked={meta.hasHeader}
             disabled={busy}
-            onChange={(e) => onReopen({ hasHeader: e.target.checked })}
+            onChange={(e) => props.onSetHeader(e.target.checked)}
           />
           Primeira linha é cabeçalho
         </label>

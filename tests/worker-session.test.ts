@@ -3,11 +3,12 @@ import { EXPORT_PRESETS } from "../src/core/export/csv";
 import type { OpenProgress } from "../src/workers/protocol";
 import { WorkerSession } from "../src/workers/session";
 import { fixture } from "./helpers";
+import { memoryStore } from "./memory-store";
 
 const fileFrom = (name: string) => new File([fixture(name)], name);
 
-async function openCsv(name: string) {
-  const session = new WorkerSession();
+async function openCsv(name: string, store = memoryStore()) {
+  const session = new WorkerSession({ store, saveDelay: 0 });
   const events: OpenProgress[] = [];
   const result = await session.open(fileFrom(name), undefined, (p) => events.push(p));
   if (result.status !== "opened") throw new Error("esperava arquivo aberto");
@@ -78,7 +79,7 @@ describe("sessão do worker", () => {
   });
 
   it("pede a aba de um .xlsx com várias e abre a escolhida", async () => {
-    const session = new WorkerSession();
+    const session = new WorkerSession({ store: memoryStore(), saveDelay: 0 });
     const first = await session.open(fileFrom("planilha-duas-abas.xlsx"), undefined, () => {});
     expect(first).toEqual({ status: "choose-sheet", sheets: ["Clientes", "Produtos"] });
 
@@ -91,6 +92,105 @@ describe("sessão do worker", () => {
   });
 
   it("dá erro claro quando não há arquivo aberto", () => {
-    expect(() => new WorkerSession().getRows(0, 10)).toThrow("Nenhum arquivo aberto");
+    expect(() => new WorkerSession({ store: memoryStore(), saveDelay: 0 }).getRows(0, 10)).toThrow("Nenhum arquivo aberto");
+  });
+
+  it("corrige, desfaz e refaz, informando o que seria desfeito", async () => {
+    const { session, info } = await openCsv("mojibake.csv");
+    expect(info.mojibakeCells).toBe(14);
+    expect(info.undo).toBeUndefined();
+
+    const preview = session.preview({ op: "fixEncoding", params: {} });
+    expect(preview.changedCells).toBe(14);
+
+    const fixed = session.execute({ op: "fixEncoding", params: {} });
+    expect(fixed).toMatchObject({ mojibakeCells: 0, undo: "Corrigir acentos quebrados" });
+    expect(session.getRows(0, 1).rows[0]![0]).toBe("João");
+
+    const undone = session.undo();
+    expect(undone).toMatchObject({ mojibakeCells: 14, redo: "Corrigir acentos quebrados" });
+    expect(undone.undo).toBeUndefined();
+    expect(session.redo().mojibakeCells).toBe(0);
+  });
+
+  it("lista problemas com o texto da linha e localiza a linha na visualização", async () => {
+    const { session, info } = await openCsv("linhas-quebradas.csv");
+    expect(info.problems).toEqual({ column_count: 2, unclosed_quote: 1, line_break: 1 });
+    expect(info.problemRows).toBe(4);
+
+    const page = session.getProblems(1, 2);
+    expect(page.total).toBe(4);
+    expect(page.items.map((p) => [p.row, p.text])).toEqual([
+      [2, "3,Ana,Rua C,colunas a mais,extra,extra2"],
+      [3, "4,Pedro,Rua D"],
+    ]);
+
+    session.setView({ sort: [{ column: 1, direction: "asc" }], filters: [] });
+    expect(session.locateRow(3)).toBe(4);
+    session.setView({ sort: [], filters: [{ column: 1, op: "equals", value: "maria" }] });
+    expect(session.locateRow(3)).toBe(-1);
+
+    const fixed = session.execute({ op: "fixProblems", params: { rows: "all" } });
+    expect(fixed.problemRows).toBe(0);
+  });
+
+  it("aplica a ordenação aos dados e limpa a ordenação da visualização", async () => {
+    const { session } = await openCsv("clientes-utf8-virgula.csv");
+    session.setView({ sort: [{ column: 0, direction: "desc" }], filters: [] });
+    const info = session.execute({ op: "applySort", params: { sort: [{ column: 0, direction: "desc" }] } });
+    expect(info.view.sort).toEqual([]);
+    expect(session.getRows(0, 1).rows[0]![0]).toBe("Maria Conceição");
+    expect(session.undo().view.sort).toEqual([]);
+    expect(session.getRows(0, 1).rows[0]![0]).toBe("João da Silva");
+  });
+
+  it("liga e desliga o cabeçalho com desfazer, sem perder edições", async () => {
+    const { session } = await openCsv("sem-cabecalho.csv");
+    session.execute({ op: "editCell", params: { row: 1, column: 1, value: "Joana" } });
+    const withHeader = session.execute({ op: "setHeader", params: { hasHeader: true } });
+    expect(withHeader.columns[1]!.name).toBe("Maria");
+    expect(session.getRows(0, 1).rows[0]![1]).toBe("Joana");
+    expect(session.undo().meta.hasHeader).toBe(false);
+  });
+
+  it("salva a sessão e restaura idêntica em outro worker", async () => {
+    const store = memoryStore();
+    const { session } = await openCsv("mojibake.csv", store);
+    session.execute({ op: "fixEncoding", params: {} });
+    session.execute({ op: "deleteRows", params: { rows: [5] } });
+    await session.flush();
+
+    const other = new WorkerSession({ store, saveDelay: 0 });
+    expect(await other.savedSession()).toMatchObject({ fileName: "mojibake.csv", rowCount: 5, steps: 2 });
+    const restored = await other.restore();
+    expect(restored).toMatchObject({ fileName: "mojibake.csv", rowCount: 5, undo: "Excluir linha 6" });
+    expect(other.getRows(0, 5).rows).toEqual(session.getRows(0, 5).rows);
+
+    // O histórico continua funcionando depois de restaurar.
+    other.undo();
+    expect(other.undo().mojibakeCells).toBe(14);
+
+    // E dá para reler o arquivo original com outro separador.
+    expect((await other.reopen({ delimiter: "," }, undefined, () => {})).meta.delimiter).toBe(",");
+  });
+
+  it("espera um tempo sem alterações antes de salvar", async () => {
+    const store = memoryStore();
+    const session = new WorkerSession({ store, saveDelay: 50 });
+    await session.open(fileFrom("clientes-utf8-virgula.csv"), undefined, () => {});
+    session.execute({ op: "deleteRows", params: { rows: [0] } });
+    session.execute({ op: "deleteRows", params: { rows: [0] } });
+    expect(store.saves).toBe(0);
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    expect(store.saves).toBe(1);
+    expect(store.saved?.dataset.rows).toHaveLength(3);
+  });
+
+  it("descarta a sessão salva", async () => {
+    const store = memoryStore();
+    const { session } = await openCsv("clientes-utf8-virgula.csv", store);
+    await session.flush();
+    await session.discardSaved();
+    expect(await session.savedSession()).toBeUndefined();
   });
 });

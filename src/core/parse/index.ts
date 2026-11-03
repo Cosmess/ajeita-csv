@@ -1,5 +1,5 @@
 import type { Column, Dataset, Delimiter, Encoding, ParseMeta } from "../dataset";
-import { findColumnCountIssues, parseCsvText, type CsvParseCallbacks } from "./csv";
+import { parseCsvText, type CsvParseCallbacks } from "./csv";
 import { detectDelimiter } from "./delimiter";
 import { decodeBytes, detectEncoding } from "./encoding";
 import { detectHeader } from "./header";
@@ -7,8 +7,8 @@ import { detectColumnType } from "./values";
 
 export type ParseOverrides = { encoding?: Encoding; delimiter?: Delimiter; hasHeader?: boolean };
 
-// Resultado do parse antes de separar cabeçalho e dados: permite trocar
-// "tem cabeçalho" sem ler o arquivo de novo.
+// Resultado do parse antes de separar cabeçalho e dados. Os índices de
+// meta.issues aqui contam a primeira linha do arquivo.
 export type RawTable = { rows: string[][]; meta: ParseMeta };
 
 const DELIMITER_SAMPLE = 64 * 1024;
@@ -22,7 +22,7 @@ export function parseCsvBytes(bytes: Uint8Array, overrides: ParseOverrides = {},
   const hasHeader = overrides.hasHeader ?? detectHeader(rows.slice(0, 51));
   return {
     rows,
-    meta: { source: "csv", encoding, delimiter, hasHeader, hasBom: detected.hasBom, issues },
+    meta: { source: "csv", encoding, delimiter, hasHeader, header: [], hasBom: detected.hasBom, issues },
   };
 }
 
@@ -34,6 +34,7 @@ export function tableFromRows(rows: string[][], overrides: ParseOverrides & { sh
       encoding: "utf-8",
       delimiter: ",",
       hasHeader: overrides.hasHeader ?? detectHeader(rows.slice(0, 51)),
+      header: [],
       hasBom: false,
       issues: [],
       sheet: overrides.sheet,
@@ -45,23 +46,34 @@ export function buildDataset(table: RawTable): Dataset {
   const { meta } = table;
   const header = meta.hasHeader ? (table.rows[0] ?? []) : [];
   const rows = meta.hasHeader ? table.rows.slice(1) : table.rows;
+  const offset = meta.hasHeader ? 1 : 0;
+  const issues = meta.issues
+    .map((issue) => ({ ...issue, row: issue.row - offset }))
+    .filter((issue) => issue.row >= 0);
+  const datasetMeta: ParseMeta = { ...meta, header, issues };
+  return { columns: deriveColumns(rows, datasetMeta), rows, meta: datasetMeta };
+}
 
-  let width = header.length;
+export function columnName(header: readonly string[], index: number): string {
+  const name = header[index];
+  return name?.trim() ? name : `Coluna ${index + 1}`;
+}
+
+// Colunas a partir do cabeçalho e da linha mais larga. Chamado de novo a cada
+// alteração: linhas corrigidas podem tirar ou acrescentar colunas, e os tipos mudam.
+export function deriveColumns(rows: readonly (readonly string[])[], meta: ParseMeta, previous: readonly Column[] = []): Column[] {
+  let width = meta.header.length;
   for (const row of rows) if (row.length > width) width = row.length;
 
   const columns: Column[] = [];
   for (let i = 0; i < width; i++) {
-    const name = header[i]?.trim() ? header[i]! : `Coluna ${i + 1}`;
-    columns.push({ id: `c${i}`, name, ...detectColumnType(columnValues(rows, i)) });
+    columns.push({
+      id: previous[i]?.id ?? `c${i}`,
+      name: columnName(meta.header, i),
+      ...detectColumnType(columnValues(rows, i)),
+    });
   }
-
-  // Problemas de aspas vêm do parser; contagem de colunas depende do cabeçalho.
-  const headerOffset = meta.hasHeader ? 1 : 0;
-  const expected = meta.hasHeader ? header.length : (rows[0]?.length ?? 0);
-  const quoteIssues = meta.issues.filter((issue) => issue.kind !== "column_count");
-  const countIssues = findColumnCountIssues(rows, expected).map((issue) => ({ ...issue, row: issue.row + headerOffset }));
-
-  return { columns, rows, meta: { ...meta, issues: [...quoteIssues, ...countIssues] } };
+  return columns;
 }
 
 function* columnValues(rows: readonly (readonly string[])[], index: number): Generator<string> {
