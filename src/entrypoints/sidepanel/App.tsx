@@ -537,7 +537,10 @@ export function App() {
       {screen.kind !== "ready" && (
         <header className="intro">
           <div className="intro-title">
-            <h1>Ajeita CSV</h1>
+            <h1>
+              <img src="/icon/48.png" alt="" width="28" height="28" />
+              Ajeita CSV
+            </h1>
             <SettingsButton onClearSaved={() => void clearSaved()} />
           </div>
           <p className="muted">
