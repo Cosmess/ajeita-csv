@@ -8,7 +8,9 @@ import { rowsFromText } from "../../core/create/selection";
 import { detectHeader } from "../../core/parse/header";
 import type { ValidationRule } from "../../core/validate";
 import { PAGE_IMPORT_KEY, type PageImport } from "../../shared/page-import";
+import { MergeDialog } from "../../ui/components/MergeDialog";
 import { PasteDialog } from "../../ui/components/PasteDialog";
+import { SplitDialog } from "../../ui/components/SplitDialog";
 import type { SessionSummary } from "../../storage/session";
 import { ACTIONS, type ActionDef } from "../../ui/actions";
 import { ActionDialog } from "../../ui/components/ActionDialog";
@@ -102,6 +104,8 @@ export function App() {
   const [validations, setValidations] = useState<Partial<Record<number, ValidationRule>>>({});
   const [invalidCounts, setInvalidCounts] = useState<Partial<Record<number, number>>>({});
   const [pasting, setPasting] = useState(false);
+  const [splitting, setSplitting] = useState(false);
+  const [merging, setMerging] = useState(false);
   const [confirmImport, setConfirmImport] = useState<Extract<PageImport, { status: "ready" }>>();
   const handledImport = useRef(0);
   const [dragging, setDragging] = useState(false);
@@ -165,6 +169,11 @@ export function App() {
     }
     const rows = rowsFromText(text);
     void create(() => client.request("createFromRows", { name: "dados-colados.csv", rows, hasHeader: detectHeader(rows) }));
+  };
+
+  const mergeFiles = (files: File[], addSource: boolean) => {
+    setMerging(false);
+    void create(() => client.request("mergeFiles", { files, addSource }));
   };
 
   const importFromPage = useCallback(
@@ -602,6 +611,7 @@ export function App() {
             onFile={(file) => void openFile(file)}
             onBlank={() => void create(() => client.request("createBlank", { columns: 3, rows: 10 }))}
             onPaste={() => setPasting(true)}
+            onMerge={() => setMerging(true)}
           />
         </>
       )}
@@ -609,6 +619,7 @@ export function App() {
         <LoadingView fileName={screen.fileName} progress={screen.progress} message={screen.message} />
       )}
       {pasting && <PasteDialog onSubmit={createFromText} onClose={() => setPasting(false)} />}
+      {merging && <MergeDialog replacing={hasEdits} onMerge={mergeFiles} onClose={() => setMerging(false)} />}
       {screen.kind === "choose-sheet" && (
         <SheetPicker
           fileName={screen.file.name}
@@ -650,6 +661,10 @@ export function App() {
           <div className="toolbar">
             <ActionsMenu
               disabled={busy}
+              files={[
+                { label: "Dividir arquivo…", onClick: () => setSplitting(true) },
+                { label: "Juntar arquivos…", onClick: () => setMerging(true) },
+              ]}
               onPick={(def) =>
                 def.direct
                   ? void execute(def.toOp({}, { rowCount: info.rowCount, columnCount: info.columns.length }))
@@ -774,6 +789,22 @@ export function App() {
               onClose={() => setExporting(false)}
               onSaved={(name) => {
                 setExporting(false);
+                setNotice(`Arquivo salvo: ${name}`);
+              }}
+              onCopied={(rows) => {
+                setExporting(false);
+                setNotice(`${formatCount(rows)} linhas copiadas. Cole no Excel ou no Google Sheets.`);
+              }}
+            />
+          )}
+          {splitting && (
+            <SplitDialog
+              fileName={info.fileName}
+              columns={info.columns}
+              viewChanged={filtered || view.sort.length > 0}
+              onClose={() => setSplitting(false)}
+              onSaved={(name) => {
+                setSplitting(false);
                 setNotice(`Arquivo salvo: ${name}`);
               }}
             />

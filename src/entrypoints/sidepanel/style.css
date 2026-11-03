@@ -1153,6 +1153,45 @@ input[aria-invalid="true"] {
   list-style: none;
 }
 
+.copy-button {
+  margin-right: auto;
+  padding-left: 0;
+}
+
+.inline-number {
+  width: 6.5em;
+}
+
+.split-preview ul {
+  margin: 4px 0;
+  padding-left: 18px;
+  max-height: 200px;
+  overflow: auto;
+  font-size: 0.85rem;
+}
+
+.split-preview p {
+  margin: 0;
+}
+
+.merge-table-scroll {
+  overflow-x: auto;
+  margin: 8px 0;
+}
+
+.merge-table {
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+
+.merge-table th,
+.merge-table td {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  white-space: nowrap;
+}
+
 .unencodable {
   display: flex;
   flex-wrap: wrap;

@@ -9,7 +9,9 @@ import { loadExportPreferences, saveExportPreferences } from "../preferences";
 import { pickSaveTarget, writeToTarget } from "../save";
 import { getWorkerClient } from "../worker";
 
-const PRESET_SUFFIX: Record<ExportPreset, string> = { "excel-br": "_excel-br", csv: "_padrao" };
+const PRESET_SUFFIX: Record<ExportPreset, string> = { "excel-br": "_excel-br", csv: "_padrao", tsv: "" };
+// Acima disso, gerar .xlsx ou copiar para a área de transferência fica lento e pesado.
+const LARGE = 300_000;
 
 function suggestName(fileName: string, preset: ExportPreset, delimiter: Delimiter): string {
   const base = fileName.replace(/\.[^.]+$/, "") || "dados";
@@ -29,6 +31,7 @@ type Props = {
   viewChanged: boolean;
   onClose: () => void;
   onSaved: (fileName: string) => void;
+  onCopied: (rows: number) => void;
 };
 
 const SQL_MODES: [SqlMode, string, SqlDialect | undefined][] = [
@@ -37,8 +40,8 @@ const SQL_MODES: [SqlMode, string, SqlDialect | undefined][] = [
   ["bulk", "BULK INSERT (lê um CSV no servidor)", "sqlserver"],
 ];
 
-export function ExportDialog({ fileName, rowCount, viewCount, viewChanged, onClose, onSaved }: Props) {
-  const [format, setFormat] = useState<"csv" | "sql">("csv");
+export function ExportDialog({ fileName, rowCount, viewCount, viewChanged, onClose, onSaved, onCopied }: Props) {
+  const [format, setFormat] = useState<"csv" | "xlsx" | "sql">("csv");
   const [sql, setSql] = useState<SqlOptions>(() => ({
     dialect: "postgres",
     mode: "insert",
@@ -91,6 +94,39 @@ export function ExportDialog({ fileName, rowCount, viewCount, viewChanged, onClo
       onSaved(sqlName_);
     } catch (error) {
       setStep({ kind: "error", message: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  const base = fileName.replace(/\.[^.]+$/, "") || "dados";
+  const rows = scope === "view" ? viewCount : rowCount;
+
+  async function saveXlsx() {
+    const xlsxName = `${base}.xlsx`;
+    const target = await pickSaveTarget(xlsxName);
+    if (target === "cancelled") return;
+    setStep({ kind: "working", message: rows > LARGE ? "Gerando a planilha… arquivos grandes podem levar alguns minutos." : "Gerando a planilha…" });
+    try {
+      const { bytes } = await getWorkerClient().request("exportXlsx", { scope });
+      await writeToTarget(target, bytes as Uint8Array<ArrayBuffer>, xlsxName);
+      onSaved(xlsxName);
+    } catch (error) {
+      setStep({ kind: "error", message: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  // Copia como tabulação, o formato que Excel e Google Sheets entendem ao colar.
+  async function copy() {
+    setStep({ kind: "working", message: "Copiando…" });
+    try {
+      const text = await getWorkerClient().request("copyText", { scope });
+      await navigator.clipboard.writeText(text);
+      onCopied(rows);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      setStep({
+        kind: "error",
+        message: rows > LARGE ? "dados grandes demais para a área de transferência; salve um arquivo." : reason,
+      });
     }
   }
 
@@ -169,7 +205,7 @@ export function ExportDialog({ fileName, rowCount, viewCount, viewChanged, onClo
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              void (format === "sql" ? saveSql() : start());
+              void (format === "sql" ? saveSql() : format === "xlsx" ? saveXlsx() : start());
             }}
           >
             <fieldset className="presets">
@@ -186,6 +222,20 @@ export function ExportDialog({ fileName, rowCount, viewCount, viewChanged, onClo
                 <span>
                   <strong>CSV padrão</strong>
                   <span className="muted small"> — vírgula, UTF-8 sem BOM, para sistemas e bancos de dados</span>
+                </span>
+              </label>
+              <label className="radio">
+                <input type="radio" checked={format === "csv" && preset === "tsv"} onChange={() => choosePreset("tsv")} />
+                <span>
+                  <strong>TSV</strong>
+                  <span className="muted small"> — separado por tabulação, UTF-8</span>
+                </span>
+              </label>
+              <label className="radio">
+                <input type="radio" checked={format === "xlsx"} onChange={() => setFormat("xlsx")} />
+                <span>
+                  <strong>Planilha do Excel (.xlsx)</strong>
+                  <span className="muted small"> — números e datas como células de verdade; códigos e CPFs como texto</span>
                 </span>
               </label>
               <label className="radio">
@@ -330,10 +380,22 @@ export function ExportDialog({ fileName, rowCount, viewCount, viewChanged, onClo
               </label>
             )}
 
+            {format === "xlsx" && rows > LARGE && (
+              <p className="muted small">Planilhas com mais de {formatCount(LARGE)} linhas podem demorar para gerar e abrir no Excel.</p>
+            )}
             {step.kind === "working" && <p className="muted">{step.message}</p>}
             {step.kind === "error" && <p className="error">Não foi possível exportar: {step.message}</p>}
 
             <div className="modal-actions">
+              <button
+                type="button"
+                className="button link copy-button"
+                disabled={step.kind === "working"}
+                title="Copia as linhas para colar no Excel ou no Google Sheets"
+                onClick={() => void copy()}
+              >
+                Copiar para colar no Excel/Sheets
+              </button>
               <button type="button" className="button" onClick={onClose}>
                 Cancelar
               </button>

@@ -8,6 +8,16 @@ type SaveFilePicker = (options: {
 
 export type SaveTarget = FileSystemFileHandle | "download";
 
+const MIME: Record<string, string> = {
+  ".csv": "text/csv",
+  ".tsv": "text/tab-separated-values",
+  ".sql": "application/sql",
+  ".zip": "application/zip",
+  ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+};
+
+const mimeOf = (fileName: string) => MIME[fileName.slice(fileName.lastIndexOf(".")).toLowerCase()] ?? "application/octet-stream";
+
 // Precisa ser chamado logo após o clique do usuário (exigência do navegador).
 export async function pickSaveTarget(suggestedName: string): Promise<SaveTarget | "cancelled"> {
   const picker = (window as unknown as { showSaveFilePicker?: SaveFilePicker }).showSaveFilePicker;
@@ -16,7 +26,7 @@ export async function pickSaveTarget(suggestedName: string): Promise<SaveTarget 
   try {
     return await picker({
       suggestedName,
-      types: [{ description: "Arquivo de texto separado", accept: { "text/csv": [extension] } }],
+      types: [{ description: `Arquivo ${extension}`, accept: { [mimeOf(suggestedName)]: [extension] } }],
     });
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") return "cancelled";
@@ -32,7 +42,7 @@ export async function writeToTarget(target: SaveTarget, bytes: Uint8Array<ArrayB
     await writable.close();
     return;
   }
-  const url = URL.createObjectURL(new Blob([bytes], { type: "text/csv" }));
+  const url = URL.createObjectURL(new Blob([bytes], { type: mimeOf(fileName) }));
   const link = document.createElement("a");
   link.href = url;
   link.download = fileName;
