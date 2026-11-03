@@ -14,7 +14,7 @@ Resolve os problemas mais comuns de quem lida com planilhas no dia a dia: acento
 |---|---|---|
 | 1. Base | Projeto WXT + React + TypeScript, side panel, worker, testes | ✅ Concluída |
 | 2. Parse e grade | Detecção de encoding/delimitador/cabeçalho, leitura de `.xlsx`, grade virtualizada, ordenar/filtrar/buscar, resumo por coluna, exportação CSV e Excel BR | ✅ Concluída |
-| 3. Corrigir | Acentos quebrados, painel de problemas, edição de células, desfazer/refazer, sessão salva | ⏳ |
+| 3. Corrigir | Acentos quebrados, painel de problemas, edição de células, desfazer/refazer, sessão salva | ✅ Concluída |
 | 4. Formatar e limpar | Limpeza, conversões (datas, números, CPF/CNPJ, telefone, CEP), colunas, validação, localizar e substituir | ⏳ |
 | 5. Criar | Grade vazia, CSV a partir da página (seleção e tabela), JSON, geração de SQL | ⏳ |
 | 6. Exportações e arquivos | `.xlsx`, TSV, área de transferência, dividir e juntar arquivos | ⏳ |
@@ -30,9 +30,15 @@ Resolve os problemas mais comuns de quem lida com planilhas no dia a dia: acento
    - **Filtrar:** clique em ⏷ no cabeçalho e escolha a condição (contém, é igual a, começa com, está vazio, não está vazio). Os filtros ativos aparecem acima da grade.
    - **Buscar:** digite no campo de busca; use Enter (ou ↓) para ir à próxima ocorrência e Shift + Enter (ou ↑) para a anterior.
    - **Resumo:** clique em Σ no cabeçalho para ver tipo, vazios, valores únicos, mínimo/máximo e os valores mais frequentes. Clicar num valor filtra por ele.
-5. Clique em **Exportar**, escolha o formato (**Excel em português** ou **CSV padrão**) e salve. Em "Opções avançadas" dá para trocar encoding (inclusive Windows-1252), separador, quebra de linha e aspas. Com filtro ou ordenação ativos, você escolhe se exporta o arquivo inteiro ou só o que está na tela.
+5. Para corrigir:
+   - **Acentos quebrados** (`JoÃ£o`): quando o arquivo tem esse problema, aparece um aviso amarelo. Clique em **Corrigir…**, confira a prévia (antes → depois) e aplique.
+   - **Problemas de estrutura** (aspas não fechadas, colunas a mais ou a menos, quebras de linha dentro de campo): clique no aviso ⚠ no rodapé. Para cada linha dá para ir até ela, corrigir automaticamente, editar o texto da linha ou excluí-la, ou corrigir todas de uma vez.
+   - **Editar uma célula:** clique duas vezes, digite e confirme com Enter (Esc cancela).
+   - **Aplicar ordenação:** a ordenação da grade é só visual; o link **Aplicar aos dados** grava a nova ordem.
+   - **Desfazer e refazer:** botões ↶ ↷ ou ⌘Z / ⌘⇧Z (Ctrl+Z / Ctrl+Y no Windows). Toda alteração pode ser desfeita.
+6. Clique em **Exportar**, escolha o formato (**Excel em português** ou **CSV padrão**) e salve. Em "Opções avançadas" dá para trocar encoding (inclusive Windows-1252), separador, quebra de linha e aspas. Com filtro ou ordenação ativos, você escolhe se exporta o arquivo inteiro ou só o que está na tela.
 
-A extensão lembra a última escolha de exportação.
+A extensão lembra a última escolha de exportação. O arquivo aberto e o histórico de alterações ficam salvos neste navegador: ao abrir o painel de novo, você pode **continuar de onde parou**. Para apagar, use ⚙ → **Limpar dados salvos**.
 
 ## Funcionalidades
 
@@ -44,10 +50,12 @@ A extensão lembra a última escolha de exportação.
 - Ordenar (por tipo: números e datas em ordem numérica, texto sem diferenciar acentos), filtrar e buscar; resumo estatístico por coluna.
 - Arquivos `.xlsx` são lidos como o texto exibido no Excel: zeros à esquerda e datas são preservados.
 
-### Corrigir
-- Correção de **acentos quebrados** (mojibake), com prévia antes de aplicar.
-- Painel de **problemas**: aspas não fechadas, quebras de linha dentro de campo e linhas com número errado de colunas.
-- Desfazer/refazer qualquer alteração, e retomar o trabalho depois de fechar o painel.
+### Corrigir ✅
+- Correção de **acentos quebrados** (mojibake: `JoÃ£o`, `SÃ£o Paulo`, `â€™`), com prévia antes de aplicar.
+- Painel de **problemas**: aspas não fechadas, quebras de linha dentro de campo e linhas com número errado de colunas, com correção automática, edição manual ou exclusão.
+- Edição de células, "primeira linha é cabeçalho" sem perder edições, e ordenação aplicada aos dados.
+- **Desfazer/refazer** qualquer alteração (até 100 passos).
+- **Sessão salva** no navegador para retomar o trabalho depois de fechar o painel.
 
 ### Formatar e limpar
 - Remover espaços extras, linhas duplicadas, linhas e colunas vazias, acentos; trocar maiúsculas/minúsculas.
@@ -117,6 +125,11 @@ src/
     sidepanel/         # interface React do painel lateral
   core/                # funções puras, sem DOM nem API do Chrome
     dataset.ts         # modelo de dados: colunas, linhas e metadados do arquivo
+    patch.ts           # alterações reversíveis (cada uma devolve o seu inverso)
+    ops.ts             # operações { op, params } que viram patches
+    history.ts         # pilha de desfazer/refazer
+    preview.ts         # prévia padrão: totais, antes → depois, não reconhecidos
+    fix/               # acentos quebrados e problemas de estrutura
     parse/             # detecção de encoding, delimitador, cabeçalho e tipos; leitura de CSV e .xlsx
     inspect/           # ordenação, filtro, busca e resumo por coluna (retornam índices de linhas)
     export/            # serialização CSV e encoder Windows-1252
@@ -126,8 +139,10 @@ src/
     session.ts         # estado do arquivo aberto, que vive dentro do worker
     handlers.ts        # liga cada operação do protocolo à sessão
     client.ts          # cliente usado pela UI para chamar o worker
+  storage/
+    session.ts         # sessão salva no IndexedDB (linhas em blocos)
   ui/
-    components/        # grade, barra do arquivo, busca, filtros, resumo, exportação
+    components/        # grade, barra do arquivo, busca, filtros, resumo, problemas, prévia, exportação
     hooks/             # cache das linhas visíveis
 scripts/
   generate-fixtures.ts # gera o arquivo de referência de desempenho
@@ -139,7 +154,7 @@ Princípios que guiam o código:
 
 - **A interface nunca trava.** Leitura, transformações e exportação rodam num Web Worker. A UI conversa com ele por um protocolo tipado: cada operação declara seus parâmetros, seu resultado e seu progresso em `src/workers/protocol.ts`, e o TypeScript garante que UI e worker estejam sempre de acordo.
 - **Os dados ficam no worker.** O arquivo aberto vive inteiro dentro do worker; a grade pede só os blocos de linhas visíveis. Ordenar e filtrar produzem uma lista de índices, sem copiar as linhas. Os bytes exportados são transferidos para a UI sem cópia.
-- **Transformações são funções puras** em `src/core/`, testadas isoladamente. Isso permite desfazer/refazer qualquer passo e, no futuro, salvar sequências de passos como "receitas" reaplicáveis.
+- **Transformações são funções puras** em `src/core/`, testadas isoladamente. Cada operação é um objeto serializável `{ op, params }` que vira um *patch*; aplicar um patch devolve os dados novos e o patch inverso. O histórico guarda só o que mudou (nunca cópias do arquivo inteiro), e as mesmas operações vão servir de base para as "receitas" reaplicáveis.
 - **Permissões mínimas.** O manifest pede apenas `sidePanel`, `storage`, `contextMenus`, `activeTab` e `scripting`. Nada de acesso amplo a sites.
 - **Nada de código remoto.** Todas as bibliotecas vão no pacote da extensão, como exige o Manifest V3.
 
@@ -154,7 +169,7 @@ Princípios que guiam o código:
 
 ## Testes
 
-- `pnpm test` roda os testes unitários: detecção de encoding, delimitador, cabeçalho e tipos com os [arquivos de exemplo](tests/fixtures/README.md), ordenação, filtros, busca, resumo, encoder Windows-1252 e **ida e volta** (exportar em cada formato e abrir de novo devolve os mesmos dados).
+- `pnpm test` roda os testes unitários: detecção de encoding, delimitador, cabeçalho e tipos com os [arquivos de exemplo](tests/fixtures/README.md), ordenação, filtros, busca, resumo, encoder Windows-1252, **ida e volta** (exportar em cada formato e abrir de novo devolve os mesmos dados), correção de acentos e de problemas, **50 passos aleatórios desfeitos** que voltam exatamente ao original, e sessão salva no IndexedDB.
 - `pnpm gen:fixtures && pnpm bench` mede o desempenho com 1 milhão de linhas. Medições num Mac com Apple Silicon:
 
 | Operação | Tempo | Meta |
@@ -165,6 +180,8 @@ Princípios que guiam o código:
 | Filtrar / buscar em todas as colunas | 0,3 / 1,2 s | 2 s |
 | Resumo de uma coluna | 0,7 s | 2 s |
 | Exportar Excel BR / Windows-1252 | 4,1 / 5,0 s | 10 s |
+
+Na interface (Chrome, 1 milhão de linhas): editar uma célula leva ~0,5 s, desfazer ~0,45 s e restaurar a sessão salva ~1,3 s.
 
 ## Contribuindo
 
