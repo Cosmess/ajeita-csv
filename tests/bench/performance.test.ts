@@ -8,6 +8,9 @@ import { searchCells } from "../../src/core/inspect/search";
 import { summarizeColumn } from "../../src/core/inspect/summary";
 import { allIndices, buildView } from "../../src/core/inspect/view";
 import { buildDataset, parseCsvBytes } from "../../src/core/parse";
+import { planOp, type Op } from "../../src/core/ops";
+import { applyPatch } from "../../src/core/patch";
+import { previewPlan } from "../../src/core/preview";
 
 const FILE = join(__dirname, "..", "fixtures", "generated", "referencia.csv");
 // Metas do CLAUDE.md, com 20% de tolerância.
@@ -99,5 +102,29 @@ describe.skipIf(!existsSync(FILE))("desempenho com o arquivo de referência", ()
       encodeText(serializeCsv(dataset, EXPORT_PRESETS["excel-br"]), "windows-1252"),
     );
     expect(ms).toBeLessThan(seconds(10));
+  });
+
+  // Transformação simples numa coluna: prévia < 1 s e aplicação < 3 s.
+  const transforms: [string, Op][] = [
+    ["remover espaços (nome)", { op: "trimSpaces", params: { columns: [1] } }],
+    ["máscara de CPF", { op: "formatDocuments", params: { columns: [2], mode: "unmask", kind: "cpf", padZeros: true } }],
+    ["telefones", { op: "formatPhones", params: { columns: [8], format: "e164", addNinthDigit: true } }],
+    ["datas para ISO", { op: "convertDates", params: { columns: [6], to: "ymd", keepTime: true } }],
+    ["números para 1234.56", { op: "convertNumbers", params: { columns: [7], to: "us", keepCurrency: false } }],
+  ];
+  for (const [label, op] of transforms) {
+    it(`${label}: prévia < 1 s e aplicação < 3 s`, () => {
+      const preview = measure(`prévia ${label}`, () => previewPlan(dataset, planOp(dataset, op)));
+      const applied = measure(`aplicar ${label}`, () => applyPatch(dataset, planOp(dataset, op).patch));
+      expect(preview.ms).toBeLessThan(seconds(1));
+      expect(applied.ms).toBeLessThan(seconds(3));
+    });
+  }
+
+  it("dividir coluna em < 3 s", () => {
+    const { ms } = measure("dividir nome", () =>
+      applyPatch(dataset, planOp(dataset, { op: "splitColumn", params: { column: 1, separator: " ", parts: 2 } }).patch),
+    );
+    expect(ms).toBeLessThan(seconds(3));
   });
 });
