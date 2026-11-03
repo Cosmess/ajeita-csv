@@ -39,6 +39,15 @@ export function createHandlers(session = new WorkerSession()): Handlers {
     summarize: ({ column, scope, rule }) => session.summarize(column, scope, rule),
     countInvalid: ({ column, rule }) => session.countInvalid(column, rule),
     flush: () => session.flush(),
+    createBlank: ({ columns, rows }) => session.createBlank(columns, rows),
+    createFromRows: ({ name, rows, hasHeader }) => session.createFromRows(name, rows, hasHeader),
+    createFromJson: ({ name, text }) => session.createFromJson(name, text),
+    previewSql: ({ options, scope }) => session.previewSql(options, scope),
+    exportSql: ({ options, scope }, ctx) => {
+      const bytes = session.exportSql(options, scope);
+      ctx.transfer([bytes.buffer]);
+      return { bytes };
+    },
     checkExport: ({ options, scope }) => session.checkExport(options, scope),
     exportFile: ({ options, scope, policy }, ctx) => {
       const bytes = session.exportFile(options, scope, policy);

@@ -10,14 +10,18 @@ export function ProgressBar({ fraction }: { fraction: number }) {
 }
 
 // Primeiras linhas mostradas enquanto o arquivo ainda está sendo lido.
-export function LoadingView({ fileName, progress }: { fileName: string; progress: OpenProgress }) {
+export function LoadingView({ fileName, progress, message }: { fileName: string; progress: OpenProgress; message?: string }) {
   const percent = Math.round(progress.fraction * 100);
   return (
     <section className="loading">
-      <p>
-        Lendo <strong>{fileName}</strong>… {percent}%
-      </p>
-      <ProgressBar fraction={progress.fraction} />
+      {message ? (
+        <p>{message}</p>
+      ) : (
+        <p>
+          Lendo <strong>{fileName}</strong>… {percent}%
+        </p>
+      )}
+      {!message && <ProgressBar fraction={progress.fraction} />}
       {progress.preview && (
         <div className="preview-scroll">
           <table className="preview-table">

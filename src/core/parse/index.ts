@@ -1,11 +1,13 @@
 import type { Column, Dataset, Delimiter, Encoding, ParseMeta } from "../dataset";
+import { jsonToRows, parseJsonRecords } from "../create/json";
 import { parseCsvText, type CsvParseCallbacks } from "./csv";
 import { detectDelimiter } from "./delimiter";
 import { decodeBytes, detectEncoding } from "./encoding";
 import { detectHeader } from "./header";
 import { detectColumnType } from "./values";
 
-export type ParseOverrides = { encoding?: Encoding; delimiter?: Delimiter; hasHeader?: boolean };
+// explode: JSON, campo de array que vira uma linha por item ("" = nenhum).
+export type ParseOverrides = { encoding?: Encoding; delimiter?: Delimiter; hasHeader?: boolean; explode?: string };
 
 // Resultado do parse antes de separar cabeçalho e dados. Os índices de
 // meta.issues aqui contam a primeira linha do arquivo.
@@ -40,6 +42,26 @@ export function tableFromRows(rows: string[][], overrides: ParseOverrides & { sh
       sheet: overrides.sheet,
     },
   };
+}
+
+const createdMeta = (source: ParseMeta["source"], hasHeader: boolean): ParseMeta => ({
+  source,
+  encoding: "utf-8",
+  delimiter: ",",
+  hasHeader,
+  header: [],
+  hasBom: false,
+  issues: [],
+});
+
+// Linhas montadas no painel: grade vazia, texto ou tabela da página.
+export function tableFromCreated(rows: string[][], hasHeader: boolean): RawTable {
+  return { rows, meta: createdMeta("created", hasHeader) };
+}
+
+export function tableFromJson(text: string, explode?: string): RawTable {
+  const rows = jsonToRows(parseJsonRecords(text), explode || undefined);
+  return { rows, meta: { ...createdMeta("json", true), explode: explode || undefined } };
 }
 
 export function buildDataset(table: RawTable): Dataset {

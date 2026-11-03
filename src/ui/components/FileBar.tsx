@@ -94,6 +94,19 @@ export function FileBar(props: Props) {
             </label>
           </>
         )}
+        {meta.source === "json" && info.jsonArrays.length > 0 && (
+          <label>
+            Arrays
+            <select value={meta.explode ?? ""} disabled={busy} onChange={(e) => onReopen({ explode: e.target.value })}>
+              <option value="">Juntar itens com |</option>
+              {info.jsonArrays.map((field) => (
+                <option key={field} value={field}>
+                  Uma linha por item de {field}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         {info.sheets.length > 1 && (
           <label>
             Aba

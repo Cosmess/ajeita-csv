@@ -11,6 +11,7 @@ import type { ParseOverrides } from "../core/parse";
 import type { Preview } from "../core/preview";
 import type { SessionSummary } from "../storage/session";
 import type { ValidationRule } from "../core/validate";
+import type { SqlOptions } from "../core/create/sql";
 
 export type DatasetInfo = {
   fileName: string;
@@ -27,6 +28,8 @@ export type DatasetInfo = {
   problems: Record<ProblemKind, number>;
   problemRows: number;
   mojibakeCells: number;
+  // JSON: campos de array que podem virar uma linha por item.
+  jsonArrays: string[];
   // Descrição do passo que seria desfeito ou refeito.
   undo?: string;
   redo?: string;
@@ -69,6 +72,11 @@ export type RequestMap = {
   getMatch: Rpc<{ index: number }, { position: number; column: number } | null>;
   summarize: Rpc<{ column: number; scope: ExportScope; rule?: ValidationRule }, ColumnSummary>;
   countInvalid: Rpc<{ column: number; rule: ValidationRule }, number>;
+  createBlank: Rpc<{ columns: number; rows: number }, DatasetInfo>;
+  createFromRows: Rpc<{ name: string; rows: string[][]; hasHeader: boolean }, DatasetInfo>;
+  createFromJson: Rpc<{ name: string; text: string }, DatasetInfo>;
+  previewSql: Rpc<{ options: SqlOptions; scope: ExportScope }, { text: string; columns: { name: string; type: string }[] }>;
+  exportSql: Rpc<{ options: SqlOptions; scope: ExportScope }, { bytes: Uint8Array }>;
   // Salva a sessão agora, sem esperar (antes de uma operação que pode travar o worker).
   flush: Rpc<Record<string, never>, void>;
   checkExport: Rpc<{ options: CsvExportOptions; scope: ExportScope }, { unencodable: { char: string; count: number }[] }>;

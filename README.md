@@ -16,14 +16,15 @@ Resolve os problemas mais comuns de quem lida com planilhas no dia a dia: acento
 | 2. Parse e grade | Detecção de encoding/delimitador/cabeçalho, leitura de `.xlsx`, grade virtualizada, ordenar/filtrar/buscar, resumo por coluna, exportação CSV e Excel BR | ✅ Concluída |
 | 3. Corrigir | Acentos quebrados, painel de problemas, edição de células, desfazer/refazer, sessão salva | ✅ Concluída |
 | 4. Formatar e limpar | Limpeza, conversões (datas, números, CPF/CNPJ, telefone, CEP), colunas, validação, localizar e substituir | ✅ Concluída |
-| 5. Criar | Grade vazia, CSV a partir da página (seleção e tabela), JSON, geração de SQL | ⏳ |
+| 5. Criar | Grade vazia, CSV a partir da página (seleção e tabela), JSON, geração de SQL | ✅ Concluída |
 | 6. Exportações e arquivos | `.xlsx`, TSV, área de transferência, dividir e juntar arquivos | ⏳ |
 | 7. Publicação | Ícones, textos, política de privacidade, pacote para a loja | ⏳ |
 
 ## Como usar
 
 1. Clique no ícone do Ajeita CSV na barra do Chrome para abrir o painel lateral.
-2. Arraste um arquivo para o painel ou clique em **Abrir arquivo** (`.csv`, `.txt`, `.tsv` ou `.xlsx`). Se a planilha tiver várias abas, escolha qual abrir.
+2. Arraste um arquivo para o painel ou clique em **Abrir arquivo** (`.csv`, `.txt`, `.tsv`, `.xlsx` ou `.json`). Se a planilha tiver várias abas, escolha qual abrir. Também dá para **criar uma planilha em branco** ou **colar dados** (do Excel, do Google Sheets, texto em colunas ou JSON).
+   - **De qualquer site:** clique com o botão direito numa tabela e escolha **Criar CSV desta tabela**, ou selecione um texto e escolha **Criar CSV a partir da seleção**. Se a página tiver várias tabelas e nada estiver selecionado, clique na tabela que você quer (Esc cancela).
 3. Confira o que foi detectado logo abaixo do nome do arquivo (**encoding**, **separador** e **primeira linha é cabeçalho**) e corrija, se precisar: o arquivo é relido na hora.
 4. Na grade:
    - **Ordenar:** clique no nome da coluna (crescente → decrescente → sem ordem). Com **Shift + clique**, ordena por mais de uma coluna.
@@ -33,7 +34,8 @@ Resolve os problemas mais comuns de quem lida com planilhas no dia a dia: acento
 5. Para corrigir:
    - **Acentos quebrados** (`JoÃ£o`): quando o arquivo tem esse problema, aparece um aviso amarelo. Clique em **Corrigir…**, confira a prévia (antes → depois) e aplique.
    - **Problemas de estrutura** (aspas não fechadas, colunas a mais ou a menos, quebras de linha dentro de campo): clique no aviso ⚠ no rodapé. Para cada linha dá para ir até ela, corrigir automaticamente, editar o texto da linha ou excluí-la, ou corrigir todas de uma vez.
-   - **Editar uma célula:** clique duas vezes, digite e confirme com Enter (Esc cancela).
+   - **Editar uma célula:** clique duas vezes (ou selecione e aperte Enter), digite e confirme com Enter (Esc cancela). Com uma célula selecionada: setas movem, Delete apaga e ⌘V / Ctrl+V cola células copiadas de uma planilha.
+   - **Linhas e colunas:** o × no número da linha a exclui; **Ajeitar → Adicionar linha/coluna no fim** e **⋯ → Inserir coluna à direita** acrescentam.
    - **Aplicar ordenação:** a ordenação da grade é só visual; o link **Aplicar aos dados** grava a nova ordem.
    - **Desfazer e refazer:** botões ↶ ↷ ou ⌘Z / ⌘⇧Z (Ctrl+Z / Ctrl+Y no Windows). Toda alteração pode ser desfeita.
 6. Para formatar e limpar:
@@ -72,17 +74,18 @@ A extensão lembra a última escolha de exportação. O arquivo aberto e o hist�
 - Renomear, reordenar (arrastando), duplicar, excluir, dividir e juntar colunas.
 - **Localizar e substituir**, com expressões regulares (`$1`, `$2`). Uma expressão que demore mais de 10 segundos é interrompida e o arquivo volta ao estado anterior.
 
-### Criar
-- Planilha em branco editável.
-- CSV a partir de texto selecionado ou de uma tabela da página (menu do botão direito).
-- CSV a partir de JSON, achatando objetos aninhados.
-- Geração de SQL (`CREATE TABLE` + `INSERT`) para PostgreSQL, SQL Server e MySQL.
+### Criar ✅
+- **Planilha em branco** editável, com colar do Excel/Google Sheets (criando linhas e colunas que faltarem).
+- CSV a partir de **texto selecionado** (tabulação, `;` ou espaços como separador) ou de uma **tabela da página** (com `colspan` e `rowspan`), pelo menu do botão direito.
+- CSV a partir de **JSON** (arquivo ou colado), achatando objetos aninhados (`endereco.cidade`); arrays juntados com `|` ou uma linha por item.
+- **SQL** para PostgreSQL, SQL Server e MySQL: `CREATE TABLE` com tipos detectados pelos dados (inteiro, decimal, data, data e hora, booleano, texto com tamanho) e `INSERT` em lotes, com escape correto de cada banco; `COPY` (PostgreSQL) e `BULK INSERT` (SQL Server).
 
 ### Exportar
 - ✅ **CSV Excel BR** (padrão): UTF-8 com BOM, `;`, vírgula decimal e quebra de linha CRLF — abre certinho no Excel em português.
 - ✅ **CSV padrão**: UTF-8, vírgula, LF.
 - ✅ Opções avançadas: **Windows-1252** para sistemas legados (avisa antes quais caracteres não existem nesse encoding), separador, quebra de linha e aspas em todos os campos.
-- `.xlsx`, SQL e cópia para colar no Excel/Google Sheets.
+- ✅ **SQL** (ver acima), com prévia.
+- `.xlsx` e cópia para colar no Excel/Google Sheets.
 - Dividir um arquivo grande em partes ou juntar vários arquivos num só.
 
 ## Instalação para desenvolvimento
@@ -128,7 +131,7 @@ O `pnpm dev` abre uma janela do Chrome com a extensão já carregada e recarrega
 ```
 src/
   entrypoints/
-    background.ts      # service worker: abre o side panel ao clicar no ícone
+    background.ts      # service worker: abre o side panel e cuida do menu do botão direito
     sidepanel/         # interface React do painel lateral
   core/                # funções puras, sem DOM nem API do Chrome
     dataset.ts         # modelo de dados: colunas, linhas e metadados do arquivo
@@ -139,6 +142,7 @@ src/
     fix/               # acentos quebrados e problemas de estrutura
     transform/         # limpeza, conversões, colunas e localizar e substituir
     validate/          # CPF, CNPJ (inclusive alfanumérico), e-mail, CEP, telefone, DDDs
+    create/            # texto selecionado, tabela da página, JSON e geração de SQL
     parse/             # detecção de encoding, delimitador, cabeçalho e tipos; leitura de CSV e .xlsx
     inspect/           # ordenação, filtro, busca e resumo por coluna (retornam índices de linhas)
     export/            # serialização CSV e encoder Windows-1252
@@ -164,7 +168,7 @@ Princípios que guiam o código:
 - **A interface nunca trava.** Leitura, transformações e exportação rodam num Web Worker. A UI conversa com ele por um protocolo tipado: cada operação declara seus parâmetros, seu resultado e seu progresso em `src/workers/protocol.ts`, e o TypeScript garante que UI e worker estejam sempre de acordo.
 - **Os dados ficam no worker.** O arquivo aberto vive inteiro dentro do worker; a grade pede só os blocos de linhas visíveis. Ordenar e filtrar produzem uma lista de índices, sem copiar as linhas. Os bytes exportados são transferidos para a UI sem cópia.
 - **Transformações são funções puras** em `src/core/`, testadas isoladamente. Cada operação é um objeto serializável `{ op, params }` que vira um *patch*; aplicar um patch devolve os dados novos e o patch inverso. O histórico guarda só o que mudou (nunca cópias do arquivo inteiro), e as mesmas operações vão servir de base para as "receitas" reaplicáveis.
-- **Permissões mínimas.** O manifest pede apenas `sidePanel`, `storage`, `contextMenus`, `activeTab` e `scripting`. Nada de acesso amplo a sites.
+- **Permissões mínimas.** O manifest pede apenas `sidePanel`, `storage`, `contextMenus`, `activeTab` e `scripting`. Nada de acesso amplo a sites: a extensão só lê uma página quando você usa o menu do botão direito nela, e só naquele momento.
 - **Nada de código remoto.** Todas as bibliotecas vão no pacote da extensão, como exige o Manifest V3.
 
 ### Stack

@@ -1,0 +1,119 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`geração de SQL > BULK INSERT do SQL Server 1`] = `
+"-- Gerado pelo Ajeita CSV a partir de clientes.csv (3 linhas)
+-- Dialeto: SQL Server
+
+CREATE TABLE [clientes] (
+  [codigo] NVARCHAR(4),
+  [nome_do_cliente] NVARCHAR(7),
+  [observacao] NVARCHAR(15),
+  [valor] DECIMAL(6, 2),
+  [quantidade] BIGINT,
+  [data] DATE,
+  [data_e_hora] DATETIME2,
+  [ativo] BIT
+);
+
+-- 1. Exporte os dados em CSV padrão (vírgula, UTF-8), com datas aaaa-mm-dd e números 1234.56
+--    (use Ajeitar → Datas e Ajeitar → Números antes, se precisar).
+-- 2. Ajuste o caminho abaixo para onde o arquivo está no servidor.
+BULK INSERT [clientes]
+FROM 'C:\\caminho\\para\\clientes.csv'
+WITH (FORMAT = 'CSV', FIRSTROW = 2, FIELDTERMINATOR = ',', ROWTERMINATOR = '0x0a', CODEPAGE = '65001', TABLOCK);
+"
+`;
+
+exports[`geração de SQL > COPY do PostgreSQL 1`] = `
+"-- Gerado pelo Ajeita CSV (3 linhas)
+-- Dialeto: PostgreSQL
+
+CREATE TABLE "clientes" (
+  "codigo" VARCHAR(4),
+  "nome_do_cliente" VARCHAR(7),
+  "observacao" VARCHAR(15),
+  "valor" NUMERIC(6, 2),
+  "quantidade" BIGINT,
+  "data" DATE,
+  "data_e_hora" TIMESTAMP,
+  "ativo" BOOLEAN
+);
+
+-- Rode com o psql: psql -d banco -f arquivo.sql
+COPY "clientes" ("codigo", "nome_do_cliente", "observacao", "valor", "quantidade", "data", "data_e_hora", "ativo") FROM STDIN WITH (FORMAT csv);
+0001,D'Ávila,"diz ""oi"" \\ ok",1234.56,10,2025-03-15,2025-03-15 14:30,true
+0002,João,"linha 1
+linha 2",0.5,3000000000,2024-12-01,2024-12-01 08:05:10,false
+0003,,,,,,,
+\\.
+"
+`;
+
+exports[`geração de SQL > INSERT em mysql 1`] = `
+"-- Gerado pelo Ajeita CSV (3 linhas)
+-- Dialeto: MySQL
+
+CREATE TABLE \`clientes_br\` (
+  \`codigo\` VARCHAR(4),
+  \`nome_do_cliente\` VARCHAR(7),
+  \`observacao\` VARCHAR(15),
+  \`valor\` DECIMAL(6, 2),
+  \`quantidade\` BIGINT,
+  \`data\` DATE,
+  \`data_e_hora\` DATETIME,
+  \`ativo\` BOOLEAN
+);
+
+INSERT INTO \`clientes_br\` (\`codigo\`, \`nome_do_cliente\`, \`observacao\`, \`valor\`, \`quantidade\`, \`data\`, \`data_e_hora\`, \`ativo\`) VALUES
+  ('0001', 'D''Ávila', 'diz "oi" \\\\ ok', 1234.56, 10, '2025-03-15', '2025-03-15 14:30', TRUE),
+  ('0002', 'João', 'linha 1
+linha 2', 0.5, 3000000000, '2024-12-01', '2024-12-01 08:05:10', FALSE),
+  ('0003', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+"
+`;
+
+exports[`geração de SQL > INSERT em postgres 1`] = `
+"-- Gerado pelo Ajeita CSV (3 linhas)
+-- Dialeto: PostgreSQL
+
+CREATE TABLE "clientes_br" (
+  "codigo" VARCHAR(4),
+  "nome_do_cliente" VARCHAR(7),
+  "observacao" VARCHAR(15),
+  "valor" NUMERIC(6, 2),
+  "quantidade" BIGINT,
+  "data" DATE,
+  "data_e_hora" TIMESTAMP,
+  "ativo" BOOLEAN
+);
+
+INSERT INTO "clientes_br" ("codigo", "nome_do_cliente", "observacao", "valor", "quantidade", "data", "data_e_hora", "ativo") VALUES
+  ('0001', 'D''Ávila', 'diz "oi" \\ ok', 1234.56, 10, '2025-03-15', '2025-03-15 14:30', TRUE),
+  ('0002', 'João', 'linha 1
+linha 2', 0.5, 3000000000, '2024-12-01', '2024-12-01 08:05:10', FALSE),
+  ('0003', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+"
+`;
+
+exports[`geração de SQL > INSERT em sqlserver 1`] = `
+"-- Gerado pelo Ajeita CSV (3 linhas)
+-- Dialeto: SQL Server
+
+CREATE TABLE [clientes_br] (
+  [codigo] NVARCHAR(4),
+  [nome_do_cliente] NVARCHAR(7),
+  [observacao] NVARCHAR(15),
+  [valor] DECIMAL(6, 2),
+  [quantidade] BIGINT,
+  [data] DATE,
+  [data_e_hora] DATETIME2,
+  [ativo] BIT
+);
+
+INSERT INTO [clientes_br] ([codigo], [nome_do_cliente], [observacao], [valor], [quantidade], [data], [data_e_hora], [ativo]) VALUES
+  (N'0001', N'D''Ávila', N'diz "oi" \\ ok', 1234.56, 10, '2025-03-15', '2025-03-15 14:30', 1),
+  (N'0002', N'João', N'linha 1
+linha 2', 0.5, 3000000000, '2024-12-01', '2024-12-01 08:05:10', 0),
+  (N'0003', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+"
+`;

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { Column } from "../../core/dataset";
-import type { ActionDef, Field, Values } from "../actions";
+import type { ActionContext, ActionDef, Field, Values } from "../actions";
 import type { Operation } from "../../workers/protocol";
 
 function initialValues(action: ActionDef, column?: number): Values {
@@ -16,6 +16,7 @@ function initialValues(action: ActionDef, column?: number): Values {
 
 type Props = {
   action: ActionDef;
+  context: ActionContext;
   columns: Column[];
   column?: number;
   onSubmit: (op: Operation) => void;
@@ -23,7 +24,7 @@ type Props = {
 };
 
 // Formulário de uma ação, montado a partir dos campos que ela declara.
-export function ActionDialog({ action, columns, column, onSubmit, onClose }: Props) {
+export function ActionDialog({ action, context, columns, column, onSubmit, onClose }: Props) {
   const [values, setValues] = useState<Values>(() => initialValues(action, column));
   const set = (key: string, value: unknown) => setValues((current) => ({ ...current, [key]: value }));
 
@@ -137,7 +138,7 @@ export function ActionDialog({ action, columns, column, onSubmit, onClose }: Pro
         aria-labelledby="action-title"
         onSubmit={(e) => {
           e.preventDefault();
-          if (errors.length === 0 && !missingColumns) onSubmit(action.toOp(values));
+          if (errors.length === 0 && !missingColumns) onSubmit(action.toOp(values, context));
         }}
       >
         <h2 id="action-title">{action.label}</h2>

@@ -14,6 +14,7 @@ type Props = {
   onSplit: () => void;
   onRename: (name: string) => void;
   onDuplicate: () => void;
+  onInsert: () => void;
   onMove: (to: number) => void;
   onDelete: () => void;
   onValidate: (rule: ValidationRule | undefined) => void;
@@ -107,6 +108,7 @@ export function ColumnMenu(props: Props) {
       </label>
       <hr />
       {item("Dividir…", props.onSplit)}
+      {item("Inserir coluna à direita", props.onInsert)}
       {item("Duplicar", props.onDuplicate)}
       {item("Mover para a esquerda", () => props.onMove(column - 1), column === 0)}
       {item("Mover para a direita", () => props.onMove(column + 1), column === columns.length - 1)}

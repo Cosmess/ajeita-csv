@@ -1,5 +1,6 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
+import type React from "react";
 import type { Column } from "../../core/dataset";
 import { normalizeText } from "../../core/inspect/normalize";
 import type { Filter, SortKey } from "../../core/inspect/view";
@@ -36,7 +37,11 @@ export type GridProps = {
   onMoveColumn: (from: number, to: number) => void;
   // row: índice da linha nos dados (não a posição na tela).
   onEditCell: (row: number, column: number, value: string) => void;
+  onPaste: (row: number, column: number, text: string) => void;
+  onDeleteRow: (row: number) => void;
 };
+
+type Selected = { position: number; column: number };
 
 type Editing = { position: number; column: number; row: number; value: string };
 
@@ -51,9 +56,51 @@ export function Grid(props: GridProps) {
   const [dropTarget, setDropTarget] = useState<number>();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [editing, setEditing] = useState<Editing>();
+  const [selected, setSelected] = useState<Selected>();
 
   // Qualquer mudança nos dados cancela a edição em andamento.
   useEffect(() => setEditing(undefined), [viewVersion]);
+
+  const startEditing = (position: number, column: number) => {
+    const row = getRow(position);
+    if (row && !props.readOnly) setEditing({ position, column, row: row.index, value: row.cells[column] ?? "" });
+  };
+
+  // Teclado com uma célula selecionada: setas movem, Enter edita, Delete apaga.
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (!selected || editing || e.target !== scrollRef.current) return;
+    const move = (position: number, column: number) => {
+      e.preventDefault();
+      const next = {
+        position: Math.max(0, Math.min(viewCount - 1, position)),
+        column: Math.max(0, Math.min(columns.length - 1, column)),
+      };
+      setSelected(next);
+      rowVirtualizer.scrollToIndex(next.position, { align: "auto" });
+      columnVirtualizer.scrollToIndex(next.column, { align: "auto" });
+    };
+    if (e.key === "ArrowDown") move(selected.position + 1, selected.column);
+    else if (e.key === "ArrowUp") move(selected.position - 1, selected.column);
+    else if (e.key === "ArrowRight" || e.key === "Tab") move(selected.position, selected.column + 1);
+    else if (e.key === "ArrowLeft") move(selected.position, selected.column - 1);
+    else if (e.key === "Enter" || e.key === "F2") {
+      e.preventDefault();
+      startEditing(selected.position, selected.column);
+    } else if ((e.key === "Delete" || e.key === "Backspace") && !props.readOnly) {
+      const row = getRow(selected.position);
+      if (row && (row.cells[selected.column] ?? "") !== "") props.onEditCell(row.index, selected.column, "");
+    }
+  };
+
+  // Colar (⌘V / Ctrl+V) a partir da célula selecionada.
+  const onPaste = (e: React.ClipboardEvent) => {
+    if (!selected || editing || props.readOnly) return;
+    const row = getRow(selected.position);
+    const text = e.clipboardData.getData("text/plain");
+    if (!row || !text) return;
+    e.preventDefault();
+    props.onPaste(row.index, selected.column, text);
+  };
 
   const commit = () => {
     if (!editing) return;
@@ -125,7 +172,16 @@ export function Grid(props: GridProps) {
   };
 
   return (
-    <div ref={scrollRef} className="grid-scroll" role="grid" aria-rowcount={viewCount + 1} aria-colcount={columns.length}>
+    <div
+      ref={scrollRef}
+      className="grid-scroll"
+      role="grid"
+      tabIndex={0}
+      aria-rowcount={viewCount + 1}
+      aria-colcount={columns.length}
+      onKeyDown={onKeyDown}
+      onPaste={onPaste}
+    >
       <div style={{ height: rowVirtualizer.getTotalSize() + HEADER_HEIGHT, width: totalWidth, position: "relative" }}>
         <div className="grid-header" style={{ height: HEADER_HEIGHT, width: totalWidth }} role="row">
           <div className="grid-corner" style={{ width: rowNumberWidth }} />
@@ -228,6 +284,17 @@ export function Grid(props: GridProps) {
               style={{ top: HEADER_HEIGHT + vr.start, height: vr.size, width: totalWidth }}
             >
               <div className="grid-row-number" style={{ width: rowNumberWidth }} title="Número da linha nos dados">
+                {row && !props.readOnly && (
+                  <button
+                    type="button"
+                    className="row-delete"
+                    aria-label={`Excluir linha ${row.index + 1}`}
+                    title="Excluir linha"
+                    onClick={() => props.onDeleteRow(row.index)}
+                  >
+                    ×
+                  </button>
+                )}
                 {row ? formatCount(row.index + 1) : ""}
               </div>
               {virtualColumns.map((vc) => {
@@ -236,7 +303,8 @@ export function Grid(props: GridProps) {
                 const isMatch = needle !== "" && value !== "" && normalizeText(value).includes(needle);
                 const rule = validations[vc.index];
                 const isInvalid = row !== undefined && rule !== undefined && !isValid(rule, value);
-                const className = `grid-cell${isCurrent ? " match-current" : isMatch ? " match" : ""}${isInvalid ? " invalid" : ""}${row ? "" : " loading"}`;
+                const isSelected = selected?.position === vr.index && selected.column === vc.index;
+                const className = `grid-cell${isCurrent ? " match-current" : isMatch ? " match" : ""}${isInvalid ? " invalid" : ""}${isSelected ? " selected" : ""}${row ? "" : " loading"}`;
                 const style = { left: rowNumberWidth + vc.start, width: vc.size, height: vr.size };
                 if (editing && editing.position === vr.index && editing.column === vc.index) {
                   return (
@@ -250,8 +318,14 @@ export function Grid(props: GridProps) {
                       onChange={(e) => setEditing({ ...editing, value: e.target.value })}
                       onBlur={commit}
                       onKeyDown={(e) => {
-                        if (e.key === "Enter") commit();
-                        if (e.key === "Escape") setEditing(undefined);
+                        if (e.key === "Enter") {
+                          commit();
+                          scrollRef.current?.focus();
+                        }
+                        if (e.key === "Escape") {
+                          setEditing(undefined);
+                          scrollRef.current?.focus();
+                        }
                       }}
                     />
                   );
@@ -263,9 +337,11 @@ export function Grid(props: GridProps) {
                     role="gridcell"
                     title={value.length > 20 ? value : props.readOnly ? undefined : "Clique duas vezes para editar"}
                     style={style}
-                    onDoubleClick={() => {
-                      if (row && !props.readOnly) setEditing({ position: vr.index, column: vc.index, row: row.index, value });
+                    onClick={() => {
+                      setSelected({ position: vr.index, column: vc.index });
+                      scrollRef.current?.focus({ preventScroll: true });
                     }}
+                    onDoubleClick={() => startEditing(vr.index, vc.index)}
                   >
                     {value}
                   </div>

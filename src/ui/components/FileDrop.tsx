@@ -1,6 +1,6 @@
 import { useRef } from "react";
 
-export const ACCEPTED_EXTENSIONS = [".csv", ".txt", ".tsv", ".xlsx"];
+export const ACCEPTED_EXTENSIONS = [".csv", ".txt", ".tsv", ".xlsx", ".json"];
 
 export function isAccepted(file: File): boolean {
   const name = file.name.toLowerCase();
@@ -31,14 +31,29 @@ export function OpenFileButton({ onFile, label = "Abrir arquivo", primary = true
   );
 }
 
-export function EmptyState({ onFile }: { onFile: (file: File) => void }) {
+type EmptyStateProps = { onFile: (file: File) => void; onBlank: () => void; onPaste: () => void };
+
+export function EmptyState({ onFile, onBlank, onPaste }: EmptyStateProps) {
   return (
     <section className="empty-state">
       <p className="empty-title">Arraste um arquivo para cá</p>
-      <p className="muted">CSV, TXT, TSV ou Excel (.xlsx)</p>
+      <p className="muted">CSV, TXT, TSV, Excel (.xlsx) ou JSON</p>
       <OpenFileButton onFile={onFile} />
       <p className="muted small">
         Encoding, separador e cabeçalho são detectados automaticamente, e você pode ajustar depois.
+      </p>
+      <div className="create-actions">
+        <span className="muted small">ou</span>
+        <button type="button" className="button" onClick={onBlank}>
+          Criar planilha em branco
+        </button>
+        <button type="button" className="button" onClick={onPaste}>
+          Colar dados ou JSON
+        </button>
+      </div>
+      <p className="muted small">
+        Em qualquer site, clique com o botão direito numa tabela ou num texto selecionado e escolha{" "}
+        <strong>Criar CSV desta tabela</strong> ou <strong>Criar CSV a partir da seleção</strong>.
       </p>
     </section>
   );
