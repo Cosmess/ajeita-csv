@@ -48,6 +48,15 @@ export function emptyColumns(dataset: Dataset): number[] {
     .filter((column) => dataset.rows.every((row) => (row[column] ?? "").trim() === ""));
 }
 
+export function addColumn(dataset: Dataset, index: number, name?: string): Patch {
+  if (index < 0 || index > width(dataset)) throw new Error("Posição inválida");
+  const sources: ColumnSource[] = identity(dataset);
+  sources.splice(index, 0, { values: dataset.rows.map(() => "") });
+  const names: (string | undefined)[] = [];
+  names[index] = name?.trim() || `Coluna ${index + 1}`;
+  return remap(dataset, { sources, names });
+}
+
 export function duplicateColumn(dataset: Dataset, column: number): Patch {
   checkColumn(dataset, column);
   const sources: ColumnSource[] = identity(dataset);

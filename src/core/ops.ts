@@ -6,6 +6,7 @@ import { allIndices, sortIndices, type SortKey } from "./inspect/view";
 import type { Patch } from "./patch";
 import { MAX_UNRECOGNIZED, outcome, planCells } from "./transform/cells";
 import {
+  addColumn,
   deleteColumns,
   duplicateColumn,
   emptyColumns,
@@ -58,7 +59,11 @@ export type Op =
   | { op: "splitColumn"; params: { column: number; separator: string; parts: number; names?: string[] } }
   | { op: "mergeColumns"; params: { columns: number[]; separator: string; name: string; keepOriginals: boolean } }
   // Localizar e substituir
-  | { op: "replace"; params: ReplaceOptions & { columns: number[] | "all" } };
+  | { op: "replace"; params: ReplaceOptions & { columns: number[] | "all" } }
+  // Edição livre (grade vazia e colar)
+  | { op: "insertRows"; params: { index: number; count: number } }
+  | { op: "addColumn"; params: { index: number; name?: string } }
+  | { op: "paste"; params: { row: number; column: number; text: string } };
 
 export type Unrecognized = { value: string; count: number; row: number; reason?: string };
 
@@ -286,7 +291,60 @@ export function planOp(dataset: Dataset, op: Op): Plan {
       const where = columns === "all" ? "" : ` em ${columnNames(dataset, targets)}`;
       return planCells(dataset, targets, `Substituir "${options.find}" por "${options.replace}"${where}`, fn);
     }
+
+    // --- Edição livre ------------------------------------------------------------
+
+    case "insertRows": {
+      const { index, count } = op.params;
+      if (index < 0 || index > dataset.rows.length) throw new Error("Posição inválida");
+      const width = Math.max(1, dataset.columns.length);
+      const rows = Array.from({ length: count }, (_, i) => ({ index: index + i, cells: Array<string>(width).fill("") }));
+      return plan({ kind: "insertRows", rows }, count === 1 ? "Adicionar linha" : `Adicionar ${count} linhas`);
+    }
+
+    case "addColumn": {
+      const { index, name } = op.params;
+      return plan(addColumn(dataset, index, name), `Adicionar coluna${name ? ` "${name}"` : ""}`);
+    }
+
+    case "paste": {
+      const { row, column, text } = op.params;
+      const lines = parseClipboard(text).length;
+      return plan(planPaste(dataset, row, column, text), lines === 1 ? "Colar" : `Colar ${lines} linhas`);
+    }
   }
+}
+
+// Texto colado de planilha (Excel, Google Sheets): linhas por quebra de linha, colunas por tabulação.
+export function parseClipboard(text: string): string[][] {
+  const lines = text.replace(/\r\n?/g, "\n").split("\n");
+  if (lines.at(-1) === "") lines.pop();
+  return lines.map((line) => line.split("\t"));
+}
+
+// Cola a partir de (row, column), sobrescrevendo células e criando linhas no fim se faltar.
+function planPaste(dataset: Dataset, row: number, column: number, text: string): Patch {
+  const values = parseClipboard(text);
+  if (values.length === 0) throw new Error("A área de transferência está vazia");
+  const width = Math.max(dataset.columns.length, column + Math.max(...values.map((v) => v.length)));
+  const fill = (cells: readonly string[], pasted: readonly string[]) => {
+    const next = cells.slice();
+    while (next.length < column) next.push("");
+    pasted.forEach((value, i) => (next[column + i] = value));
+    return next;
+  };
+  const replace: { index: number; cells: string[] }[] = [];
+  const insert: { index: number; cells: string[] }[] = [];
+  values.forEach((pasted, i) => {
+    const target = row + i;
+    const existing = dataset.rows[target];
+    if (existing) replace.push({ index: target, cells: fill(existing, pasted) });
+    else insert.push({ index: dataset.rows.length + insert.length, cells: fill(Array<string>(width).fill(""), pasted) });
+  });
+  const patches: Patch[] = [];
+  if (replace.length > 0) patches.push({ kind: "replace", rows: replace });
+  if (insert.length > 0) patches.push({ kind: "insertRows", rows: insert });
+  return patches.length === 1 ? patches[0]! : { kind: "batch", patches };
 }
 
 // Junta os planos de várias colunas (cada uma com o seu formato de origem) num só passo.
