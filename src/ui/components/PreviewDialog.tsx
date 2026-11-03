@@ -65,7 +65,7 @@ export function PreviewDialog({ preview, error, applying, onApply, onCancel, onG
                 {preview.samples.map((sample, i) => (
                   <div key={i} className="preview-sample">
                     <span className="preview-where muted small">
-                      Linha {formatCount(sample.row + 1)}
+                      {sample.row < 0 ? "Cabeçalho" : `Linha ${formatCount(sample.row + 1)}`}
                       {sample.kind === "cell" ? ` · ${sample.column}` : ""}
                     </span>
                     <Diff before={sample.before} after={sample.after} />
@@ -87,13 +87,16 @@ export function PreviewDialog({ preview, error, applying, onApply, onCancel, onG
                       <button type="button" className="button link" onClick={() => onGoToRow(item.row)}>
                         {item.value}
                       </button>
-                      <span className="muted small"> {formatCount(item.count)}×</span>
+                      <span className="muted small">
+                        {" "}
+                        {formatCount(item.count)}×{item.reason ? ` — ${item.reason}` : ""}
+                      </span>
                     </li>
                   ))}
                 </ul>
               </div>
             )}
-            {preview.affectedRows === 0 && <p className="muted">Nada a alterar.</p>}
+            {preview.affectedRows === 0 && preview.changedCells === 0 && <p className="muted">Nada a alterar.</p>}
           </>
         )}
         <div className="modal-actions">
@@ -103,7 +106,7 @@ export function PreviewDialog({ preview, error, applying, onApply, onCancel, onG
           <button
             type="button"
             className="button primary"
-            disabled={!preview || preview.affectedRows === 0 || applying}
+            disabled={!preview || (preview.affectedRows === 0 && preview.changedCells === 0) || applying}
             onClick={onApply}
           >
             {applying ? "Aplicando…" : "Aplicar"}

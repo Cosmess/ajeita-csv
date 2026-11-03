@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import type { Column } from "../../core/dataset";
 import { normalizeText } from "../../core/inspect/normalize";
 import type { Filter, SortKey } from "../../core/inspect/view";
+import { isValid, RULE_LABELS, type ValidationRule } from "../../core/validate";
 import { useRowCache } from "../hooks/useRowCache";
 import { formatCount } from "../labels";
 
@@ -11,6 +12,8 @@ const HEADER_HEIGHT = 34;
 const MIN_WIDTH = 72;
 const MAX_WIDTH = 320;
 const CHAR_WIDTH = 7.5;
+// Tipo do arrasto de colunas, para não confundir com arquivos soltos no painel.
+const COLUMN_DRAG = "application/x-ajeita-column";
 
 export type GridProps = {
   columns: Column[];
@@ -23,9 +26,14 @@ export type GridProps = {
   // Linha a destacar e trazer para a tela (ex.: "ir para a linha" do painel de problemas).
   focus?: { position: number; key: number };
   readOnly: boolean;
+  // Validação ativa por coluna e quantos inválidos cada uma tem.
+  validations: Partial<Record<number, ValidationRule>>;
+  invalidCounts: Partial<Record<number, number>>;
   onSort: (column: number, additive: boolean) => void;
   onFilter: (column: number) => void;
-  onSummary: (column: number) => void;
+  onFilterInvalid: (column: number) => void;
+  onColumnMenu: (column: number, anchor: { left: number; top: number }) => void;
+  onMoveColumn: (from: number, to: number) => void;
   // row: índice da linha nos dados (não a posição na tela).
   onEditCell: (row: number, column: number, value: string) => void;
 };
@@ -39,7 +47,8 @@ function columnWidth(name: string, sample: readonly (readonly string[])[], index
 }
 
 export function Grid(props: GridProps) {
-  const { columns, viewVersion, viewCount, sort, filters, searchQuery, currentMatch, focus } = props;
+  const { columns, viewVersion, viewCount, sort, filters, searchQuery, currentMatch, focus, validations, invalidCounts } = props;
+  const [dropTarget, setDropTarget] = useState<number>();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [editing, setEditing] = useState<Editing>();
 
@@ -124,13 +133,35 @@ export function Grid(props: GridProps) {
             const column = columns[vc.index]!;
             const sorted = sortInfo(vc.index);
             const filtered = filters.some((f) => f.column === vc.index);
+            const rule = validations[vc.index];
+            const invalid = invalidCounts[vc.index] ?? 0;
             return (
               <div
                 key={vc.key}
-                className="grid-header-cell"
+                className={`grid-header-cell${dropTarget === vc.index ? " drop-target" : ""}`}
                 role="columnheader"
                 aria-sort={sorted ? (sorted.direction === "asc" ? "ascending" : "descending") : "none"}
                 style={{ left: rowNumberWidth + vc.start, width: vc.size, height: HEADER_HEIGHT }}
+                draggable={!props.readOnly}
+                title="Arraste para mudar a coluna de lugar"
+                onDragStart={(e) => {
+                  e.dataTransfer.setData(COLUMN_DRAG, String(vc.index));
+                  e.dataTransfer.effectAllowed = "move";
+                }}
+                onDragOver={(e) => {
+                  if (!e.dataTransfer.types.includes(COLUMN_DRAG)) return;
+                  e.preventDefault();
+                  setDropTarget(vc.index);
+                }}
+                onDragLeave={() => setDropTarget(undefined)}
+                onDrop={(e) => {
+                  const from = Number(e.dataTransfer.getData(COLUMN_DRAG));
+                  setDropTarget(undefined);
+                  if (!e.dataTransfer.types.includes(COLUMN_DRAG)) return;
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (from !== vc.index) props.onMoveColumn(from, vc.index);
+                }}
               >
                 <button
                   type="button"
@@ -155,14 +186,32 @@ export function Grid(props: GridProps) {
                 >
                   ⏷
                 </button>
+                {rule && (
+                  <button
+                    type="button"
+                    className={`grid-badge${invalid > 0 ? " bad" : ""}`}
+                    title={
+                      invalid > 0
+                        ? `${formatCount(invalid)} inválidos (${RULE_LABELS[rule]}). Clique para ver só eles.`
+                        : `Todos válidos (${RULE_LABELS[rule]})`
+                    }
+                    onClick={() => invalid > 0 && props.onFilterInvalid(vc.index)}
+                  >
+                    {invalid > 0 ? `✗ ${formatCount(invalid)}` : "✓"}
+                  </button>
+                )}
                 <button
                   type="button"
                   className="grid-icon"
-                  title={`Resumo de "${column.name}"`}
-                  aria-label={`Resumo de ${column.name}`}
-                  onClick={() => props.onSummary(vc.index)}
+                  title={`Opções de "${column.name}"`}
+                  aria-label={`Opções de ${column.name}`}
+                  aria-haspopup="menu"
+                  onClick={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    props.onColumnMenu(vc.index, { left: rect.right - 220, top: rect.bottom + 4 });
+                  }}
                 >
-                  Σ
+                  ⋯
                 </button>
               </div>
             );
@@ -185,7 +234,9 @@ export function Grid(props: GridProps) {
                 const value = row?.cells[vc.index] ?? "";
                 const isCurrent = currentMatch?.position === vr.index && currentMatch.column === vc.index;
                 const isMatch = needle !== "" && value !== "" && normalizeText(value).includes(needle);
-                const className = `grid-cell${isCurrent ? " match-current" : isMatch ? " match" : ""}${row ? "" : " loading"}`;
+                const rule = validations[vc.index];
+                const isInvalid = row !== undefined && rule !== undefined && !isValid(rule, value);
+                const className = `grid-cell${isCurrent ? " match-current" : isMatch ? " match" : ""}${isInvalid ? " invalid" : ""}${row ? "" : " loading"}`;
                 const style = { left: rowNumberWidth + vc.start, width: vc.size, height: vr.size };
                 if (editing && editing.position === vr.index && editing.column === vc.index) {
                   return (

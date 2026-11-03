@@ -33,6 +33,7 @@ export const FILTER_LABELS: Record<FilterOp, string> = {
   startsWith: "começa com",
   empty: "está vazio",
   notEmpty: "não está vazio",
+  invalid: "é inválido",
 };
 
 export const TYPE_LABELS: Record<ColumnType, string> = {
