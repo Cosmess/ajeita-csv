@@ -100,6 +100,7 @@ src/
     client.ts          # cliente usado pela UI para chamar o worker
   ui/                  # componentes e utilitários da interface
 tests/                 # testes Vitest
+  fixtures/            # arquivos de exemplo (ver tests/fixtures/README.md)
 ```
 
 Princípios que guiam o código:
