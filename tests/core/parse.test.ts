@@ -126,13 +126,15 @@ describe("parse completo", () => {
     expect(dataset.rows[1]![2]).toBe("Av. Brasil, 200\napto 31");
   });
 
-  it("aponta linhas com número de colunas diferente e aspas não fechadas", () => {
+  it("guarda aspas não fechadas com o índice da linha de dados", () => {
     const { meta } = openFixture("linhas-quebradas.csv");
-    const columnRows = meta.issues.filter((i) => i.kind === "column_count").map((i) => i.row);
-    // Linha 3 tem colunas a mais e linha 4 a menos (índices contando o cabeçalho).
-    expect(columnRows).toContain(3);
-    expect(columnRows).toContain(4);
-    expect(meta.issues.some((i) => i.kind === "unclosed_quote")).toBe(true);
+    // Linha 5 do arquivo = índice 4 dos dados (o cabeçalho não conta).
+    expect(meta.issues).toEqual([{ row: 4, kind: "unclosed_quote", message: "Aspas não fechadas" }]);
+  });
+
+  it("guarda o cabeçalho original", () => {
+    expect(parseText("a;;c\n1;2;3\n").meta.header).toEqual(["a", "", "c"]);
+    expect(parseText("a;;c\n1;2;3\n").columns.map((c) => c.name)).toEqual(["a", "Coluna 2", "c"]);
   });
 
   it("não cria linha vazia por causa da quebra de linha final", () => {

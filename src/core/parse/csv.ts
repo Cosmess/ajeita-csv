@@ -51,21 +51,3 @@ export function parseCsvText(text: string, delimiter: Delimiter, callbacks: CsvP
 
   return { rows, issues };
 }
-
-// Linhas com número de colunas diferente do esperado (cabeçalho ou primeira linha).
-export function findColumnCountIssues(rows: readonly (readonly string[])[], expected: number): ParseIssue[] {
-  const issues: ParseIssue[] = [];
-  for (let i = 0; i < rows.length; i++) {
-    const row = rows[i]!;
-    // Linha totalmente vazia não é problema de colunas; é tratada pela limpeza.
-    if (row.length === 1 && row[0] === "") continue;
-    if (row.length !== expected) {
-      issues.push({
-        row: i,
-        kind: "column_count",
-        message: `A linha tem ${row.length} colunas; o esperado era ${expected}`,
-      });
-    }
-  }
-  return issues;
-}

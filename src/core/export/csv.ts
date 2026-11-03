@@ -43,7 +43,7 @@ export function serializeCsv(dataset: Dataset, options: CsvExportOptions, indice
     for (const col of usColumns) if (copy[col] !== undefined) copy[col] = toDecimalComma(copy[col]!);
     data[i] = copy;
   }
-  if (dataset.meta.hasHeader) data.unshift(dataset.columns.map((column) => column.name));
+  if (dataset.meta.hasHeader) data.unshift(dataset.meta.header);
 
   const text = Papa.unparse(data, {
     delimiter: options.delimiter,
