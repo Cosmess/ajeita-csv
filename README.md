@@ -10,7 +10,7 @@ Resolve os problemas mais comuns de quem lida com planilhas no dia a dia: acento
 
 ## Status
 
-Versão 1.0.0, pronta para envio à Chrome Web Store (ainda não publicada).
+Versão 1.0.1, publicada na Chrome Web Store.
 
 ![Ajeita CSV corrigindo acentos quebrados](assets/screenshot.png)
 
