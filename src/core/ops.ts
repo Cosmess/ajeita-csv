@@ -15,6 +15,7 @@ import {
   renameColumn,
   splitColumn,
 } from "./transform/columns";
+import { anonymizer, type AnonymizeRule } from "./transform/anonymize";
 import { convertDate, convertNumber } from "./transform/convert";
 import {
   formatCep,
@@ -58,6 +59,8 @@ export type Op =
   | { op: "duplicateColumn"; params: { column: number } }
   | { op: "splitColumn"; params: { column: number; separator: string; parts: number; names?: string[] } }
   | { op: "mergeColumns"; params: { columns: number[]; separator: string; name: string; keepOriginals: boolean } }
+  // Privacidade (LGPD). `key`: chave em hexadecimal; `shared`: veio de uma senha.
+  | { op: "anonymize"; params: { rules: AnonymizeRule[]; key: string; shared: boolean } }
   // Localizar e substituir
   | { op: "replace"; params: ReplaceOptions & { columns: number[] | "all" } }
   // Edição livre (grade vazia e colar)
@@ -279,6 +282,20 @@ export function planOp(dataset: Dataset, op: Op): Plan {
     case "mergeColumns": {
       const { columns, separator, name, keepOriginals } = op.params;
       return plan(mergeColumns(dataset, columns, separator, name, keepOriginals), `Juntar ${columnNames(dataset, columns)}`);
+    }
+
+    // --- Privacidade ---------------------------------------------------------------
+
+    case "anonymize": {
+      const { rules, key, shared } = op.params;
+      requireColumns(dataset, rules.map((r) => r.column));
+      return mergePlans(
+        `Anonimizar ${columnNames(dataset, rules.map((r) => r.column))}`,
+        rules.map((rule) => {
+          const fn = anonymizer(rule, dataset.columns[rule.column]!.name, key, shared);
+          return planCells(dataset, [rule.column], "", fn);
+        }),
+      );
     }
 
     // --- Localizar e substituir ------------------------------------------------------

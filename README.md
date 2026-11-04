@@ -48,7 +48,8 @@ Versão 1.0.1, publicada na Chrome Web Store.
    - **Validação:** as células inválidas ficam sublinhadas em vermelho e o cabeçalho mostra quantas são (✗ 12). Clique no contador para ver só as inválidas.
    - **Reordenar colunas:** arraste o cabeçalho.
 7. Clique em **Exportar**, escolha o formato (**Excel em português**, **CSV padrão**, **TSV**, **planilha do Excel (.xlsx)** ou **SQL**) e salve. **Copiar para colar no Excel/Sheets** leva as linhas para a área de transferência.
-8. **Ajeitar → Arquivos:** **Dividir arquivo** (a cada N linhas ou um arquivo por valor de uma coluna, num `.zip`) e **Juntar arquivos** (vários CSV, TSV, XLSX ou JSON, com as colunas alinhadas pelo nome). "Juntar vários arquivos" também aparece na tela inicial. Em "Opções avançadas" dá para trocar encoding (inclusive Windows-1252), separador, quebra de linha e aspas. Com filtro ou ordenação ativos, você escolhe se exporta o arquivo inteiro ou só o que está na tela.
+8. **Ajeitar → Privacidade → Anonimizar dados (LGPD):** as colunas com dados pessoais (CPF/CNPJ, e-mail, telefone, CEP, nome, data de nascimento) já vêm marcadas. Para cada coluna, escolha **mascarar**, **pseudônimo**, **dado falso** ou **apagar**, confira a prévia e aplique. Também aparece no menu ⋯ → Formatar de cada coluna.
+9. **Ajeitar → Arquivos:** **Dividir arquivo** (a cada N linhas ou um arquivo por valor de uma coluna, num `.zip`) e **Juntar arquivos** (vários CSV, TSV, XLSX ou JSON, com as colunas alinhadas pelo nome). "Juntar vários arquivos" também aparece na tela inicial. Em "Opções avançadas" dá para trocar encoding (inclusive Windows-1252), separador, quebra de linha e aspas. Com filtro ou ordenação ativos, você escolhe se exporta o arquivo inteiro ou só o que está na tela.
 
 A extensão lembra a última escolha de exportação. O arquivo aberto e o histórico de alterações ficam salvos neste navegador: ao abrir o painel de novo, você pode **continuar de onde parou**. Para apagar, use ⚙ → **Limpar dados salvos**. Para fechar o arquivo e começar do zero, use o botão **⌂ Início** ao lado do nome do arquivo (se houver alterações, ele pede confirmação e apaga a sessão salva).
 
@@ -78,6 +79,15 @@ A extensão lembra a última escolha de exportação. O arquivo aberto e o hist�
 - **Validação** de CPF, CNPJ, e-mail, CEP, telefone e campos obrigatórios, com destaque e filtro dos inválidos.
 - Renomear, reordenar (arrastando), duplicar, excluir, dividir e juntar colunas.
 - **Localizar e substituir**, com expressões regulares (`$1`, `$2`). Uma expressão que demore mais de 10 segundos é interrompida e o arquivo volta ao estado anterior.
+
+### Privacidade (LGPD) ✅
+- **Anonimizar** colunas antes de mandar a planilha para um fornecedor, para o suporte ou para uma base de testes. As colunas pessoais são sugeridas pelo conteúdo (CPF/CNPJ válidos, e-mails, telefones, CEPs) e pelo nome ("nome", "nascimento", "endereço").
+- **Mascarar:** esconde parte do valor conforme o tipo: `***.982.247-**`, `j***@gmail.com`, `(11) 9****-5678`, `01310-***`, `**/**/1987`, `J*** d*** S***`. Valores fora do formato da coluna recebem a máscara genérica: nada passa sem alteração.
+- **Pseudônimo:** troca por um código (`nome 0001`); o mesmo valor vira sempre o mesmo código, com ou sem máscara (`529.982.247-25` e `52998224725` são a mesma pessoa), então contagens e cruzamentos continuam batendo.
+- **Dado falso:** troca por um valor inventado e válido, no mesmo formato do original: CPF e CNPJ com dígito verificador certo, e-mail em `example.com`, telefone com o mesmo DDD, data no mesmo ano. Dois CPFs, e-mails ou telefones diferentes nunca viram o mesmo valor falso.
+- **Apagar:** deixa a célula vazia.
+- Pseudônimos e dados falsos usam **HMAC-SHA256 com uma chave aleatória** a cada execução, então não dá para descobrir o original testando todos os CPFs possíveis. Com a opção **"usar uma senha"**, a mesma senha gera os mesmos códigos em outros arquivos (para cruzar bases anonimizadas separadamente); a senha não é guardada.
+- Aviso no próprio diálogo: mascarar e pseudonimizar reduzem o risco, mas a LGPD (art. 12) só considera anônimo o dado que não permite reidentificar a pessoa.
 
 ### Criar ✅
 - **Planilha em branco** editável, com colar do Excel/Google Sheets (criando linhas e colunas que faltarem).
@@ -149,7 +159,7 @@ src/
     history.ts         # pilha de desfazer/refazer
     preview.ts         # prévia padrão: totais, antes → depois, não reconhecidos
     fix/               # acentos quebrados e problemas de estrutura
-    transform/         # limpeza, conversões, colunas e localizar e substituir
+    transform/         # limpeza, conversões, colunas, localizar e substituir, anonimizar (LGPD) e SHA-256
     validate/          # CPF, CNPJ (inclusive alfanumérico), e-mail, CEP, telefone, DDDs
     create/            # texto selecionado, tabela da página, JSON e geração de SQL
     parse/             # detecção de encoding, delimitador, cabeçalho e tipos; leitura de CSV e .xlsx
@@ -193,7 +203,7 @@ Princípios que guiam o código:
 
 ## Testes
 
-- `pnpm test` roda os testes unitários: detecção de encoding, delimitador, cabeçalho e tipos com os [arquivos de exemplo](tests/fixtures/README.md), ordenação, filtros, busca, resumo, encoder Windows-1252, **ida e volta** (exportar em cada formato e abrir de novo devolve os mesmos dados), correção de acentos e de problemas, **50 passos aleatórios desfeitos** que voltam exatamente ao original, e sessão salva no IndexedDB.
+- `pnpm test` roda os testes unitários: detecção de encoding, delimitador, cabeçalho e tipos com os [arquivos de exemplo](tests/fixtures/README.md), ordenação, filtros, busca, resumo, encoder Windows-1252, **ida e volta** (exportar em cada formato e abrir de novo devolve os mesmos dados), correção de acentos e de problemas, anonimização (máscaras, pseudônimos com e sem senha, dados falsos válidos e sem repetição; SHA-256/HMAC conferidos com o `node:crypto`), **50 passos aleatórios desfeitos** que voltam exatamente ao original, e sessão salva no IndexedDB.
 - `pnpm gen:fixtures && pnpm bench` mede o desempenho com 1 milhão de linhas. Medições num Mac com Apple Silicon:
 
 | Operação | Tempo | Meta |
@@ -207,6 +217,8 @@ Princípios que guiam o código:
 | Prévia de uma transformação numa coluna (espaços, CPF, telefone, data, número) | 0,4 a 0,7 s | 1 s |
 | Aplicar a transformação | 0,5 a 1,6 s | 3 s |
 | Dividir uma coluna | 0,7 s | 3 s |
+| Anonimizar: prévia de mascarar CPF | 0,9 s | 1 s |
+| Anonimizar: dado falso em 6 colunas pessoais (~6 milhões de valores) | 13,8 s | — |
 | Dividir o arquivo em 10 partes num `.zip` | 7,4 s | — |
 | Gerar `.xlsx` com 100 mil / 1 milhão de linhas | 2,3 / 21,6 s | — |
 

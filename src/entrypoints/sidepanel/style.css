@@ -545,6 +545,54 @@ label.radio {
   overflow: auto;
 }
 
+/* Anonimizar */
+
+.anonymize-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 40vh;
+  overflow: auto;
+}
+
+.anonymize-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 7rem) minmax(0, 8.5rem);
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+
+.anonymize-row.active {
+  background: var(--focus-row);
+}
+
+.anonymize-head {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.anonymize-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.anonymize-help {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+
+.anonymize-help li + li {
+  margin-top: 4px;
+}
+
+.anonymize-warning {
+  margin: 0;
+  font-size: 0.8rem;
+}
+
 .field-error {
   color: var(--error);
   font-size: 0.8rem;
