@@ -31,9 +31,15 @@ export function OpenFileButton({ onFile, label = "Abrir arquivo", primary = true
   );
 }
 
-type EmptyStateProps = { onFile: (file: File) => void; onBlank: () => void; onPaste: () => void; onMerge: () => void };
+type EmptyStateProps = {
+  onFile: (file: File) => void;
+  onBlank: () => void;
+  onPaste: () => void;
+  onMerge: () => void;
+  onCompare: () => void;
+};
 
-export function EmptyState({ onFile, onBlank, onPaste, onMerge }: EmptyStateProps) {
+export function EmptyState({ onFile, onBlank, onPaste, onMerge, onCompare }: EmptyStateProps) {
   return (
     <section className="empty-state">
       <p className="empty-title">Arraste um arquivo para cá</p>
@@ -52,6 +58,9 @@ export function EmptyState({ onFile, onBlank, onPaste, onMerge }: EmptyStateProp
         </button>
         <button type="button" className="button" onClick={onMerge}>
           Juntar vários arquivos
+        </button>
+        <button type="button" className="button" onClick={onCompare}>
+          Comparar duas planilhas
         </button>
       </div>
       <p className="muted small">

@@ -2,6 +2,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import type React from "react";
 import type { Column } from "../../core/dataset";
+import { parseChanges } from "../../core/files/compare";
 import { normalizeText } from "../../core/inspect/normalize";
 import type { Filter, SortKey } from "../../core/inspect/view";
 import { isValid, RULE_LABELS, type ValidationRule } from "../../core/validate";
@@ -30,6 +31,8 @@ export type GridProps = {
   // Validação ativa por coluna e quantos inválidos cada uma tem.
   validations: Partial<Record<number, ValidationRule>>;
   invalidCounts: Partial<Record<number, number>>;
+  // Resultado de "Comparar": colunas de situação e de alterações, para destacar as células que mudaram.
+  comparison?: { status: number; changes: number };
   onSort: (column: number, additive: boolean) => void;
   onFilter: (column: number) => void;
   onFilterInvalid: (column: number) => void;
@@ -52,7 +55,8 @@ function columnWidth(name: string, sample: readonly (readonly string[])[], index
 }
 
 export function Grid(props: GridProps) {
-  const { columns, viewVersion, viewCount, sort, filters, searchQuery, currentMatch, focus, validations, invalidCounts } = props;
+  const { columns, viewVersion, viewCount, sort, filters, searchQuery, currentMatch, focus, validations, invalidCounts, comparison } = props;
+  const columnNames = useMemo(() => columns.map((c) => c.name), [columns]);
   const [dropTarget, setDropTarget] = useState<number>();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [editing, setEditing] = useState<Editing>();
@@ -276,6 +280,8 @@ export function Grid(props: GridProps) {
 
         {virtualRows.map((vr) => {
           const row = getRow(vr.index);
+          // Valores antigos das células alteradas, lidos da coluna "alterações" da linha.
+          const changed = comparison && row ? parseChanges(row.cells[comparison.changes] ?? "", columnNames) : undefined;
           return (
             <div
               key={vr.key}
@@ -304,7 +310,9 @@ export function Grid(props: GridProps) {
                 const rule = validations[vc.index];
                 const isInvalid = row !== undefined && rule !== undefined && !isValid(rule, value);
                 const isSelected = selected?.position === vr.index && selected.column === vc.index;
-                const className = `grid-cell${isCurrent ? " match-current" : isMatch ? " match" : ""}${isInvalid ? " invalid" : ""}${isSelected ? " selected" : ""}${row ? "" : " loading"}`;
+                const before = changed?.get(columns[vc.index]?.name ?? "");
+                const status = comparison?.status === vc.index && value ? ` status-${normalizeText(value)}` : "";
+                const className = `grid-cell${isCurrent ? " match-current" : isMatch ? " match" : ""}${isInvalid ? " invalid" : ""}${isSelected ? " selected" : ""}${before !== undefined ? " diff-changed" : ""}${status}${row ? "" : " loading"}`;
                 const style = { left: rowNumberWidth + vc.start, width: vc.size, height: vr.size };
                 if (editing && editing.position === vr.index && editing.column === vc.index) {
                   return (
@@ -335,7 +343,15 @@ export function Grid(props: GridProps) {
                     key={vc.key}
                     className={className}
                     role="gridcell"
-                    title={value.length > 20 ? value : props.readOnly ? undefined : "Clique duas vezes para editar"}
+                    title={
+                      before !== undefined
+                        ? `Antes: ${before || "(vazio)"}`
+                        : value.length > 20
+                          ? value
+                          : props.readOnly
+                            ? undefined
+                            : "Clique duas vezes para editar"
+                    }
                     style={style}
                     onClick={() => {
                       setSelected({ position: vr.index, column: vc.index });

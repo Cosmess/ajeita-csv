@@ -61,6 +61,9 @@ export function createHandlers(session = new WorkerSession()): Handlers {
     },
     previewMerge: ({ files }) => session.previewMerge(files),
     mergeFiles: ({ files, addSource }) => session.mergeFiles(files, addSource),
+    previewCompare: ({ before, after }) => session.previewCompare(before, after),
+    compareFiles: ({ before, after, options }) => session.compareFiles(before, after, options),
+    cancelCompare: () => session.cancelCompare(),
     exportSql: ({ options, scope }, ctx) => {
       const bytes = session.exportSql(options, scope);
       ctx.transfer([bytes.buffer]);

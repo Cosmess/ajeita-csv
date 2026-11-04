@@ -16,6 +16,8 @@ import { ACTIONS, type ActionDef } from "../../ui/actions";
 import { ActionDialog } from "../../ui/components/ActionDialog";
 import { ActionsMenu } from "../../ui/components/ActionsMenu";
 import { AnonymizeDialog } from "../../ui/components/AnonymizeDialog";
+import { CompareDialog } from "../../ui/components/CompareDialog";
+import { CHANGES_COLUMN, COMPARE_STATUSES, STATUS_COLUMN, type CompareOptions, type CompareStatus } from "../../core/files/compare";
 import { ColumnMenu } from "../../ui/components/ColumnMenu";
 import { ColumnSummary } from "../../ui/components/ColumnSummary";
 import { ExportDialog } from "../../ui/components/ExportDialog";
@@ -54,6 +56,13 @@ type PreviewState = { op: Operation; data?: Preview; error?: string; applying: b
 type Drawer = { kind: "summary"; column: number; data?: Summary } | { kind: "problems" };
 
 const EMPTY_VIEW: ViewSpec = { sort: [], filters: [] };
+
+const STATUS_LABELS: Record<CompareStatus, [string, string]> = {
+  Novo: ["novo", "novos"],
+  Removido: ["removido", "removidos"],
+  Alterado: ["alterado", "alterados"],
+  Igual: ["igual", "iguais"],
+};
 const EMPTY_SEARCH: SearchState = { query: "", searching: false, total: 0, stored: 0, current: 0 };
 const SEARCH_DELAY = 250;
 // Uma expressão regular pode não terminar nunca (backtracking catastrófico).
@@ -109,6 +118,8 @@ export function App() {
   const [pasting, setPasting] = useState(false);
   const [splitting, setSplitting] = useState(false);
   const [merging, setMerging] = useState(false);
+  const [comparing, setComparing] = useState(false);
+  const [statusCounts, setStatusCounts] = useState<Partial<Record<string, number>>>();
   const [confirmImport, setConfirmImport] = useState<Extract<PageImport, { status: "ready" }>>();
   const handledImport = useRef(0);
   const [dragging, setDragging] = useState(false);
@@ -177,6 +188,20 @@ export function App() {
   const mergeFiles = (files: File[], addSource: boolean) => {
     setMerging(false);
     void create(() => client.request("mergeFiles", { files, addSource }));
+  };
+
+  const compareFiles = (before: File | undefined, after: File, options: CompareOptions) => {
+    setComparing(false);
+    void create(async () => {
+      const { info: result, summary } = await client.request("compareFiles", { before, after, options });
+      const { before: a, after: b } = summary.duplicateKeys;
+      if (a + b > 0) {
+        setNotice(
+          `Há chaves repetidas (${formatCount(a)} no antes, ${formatCount(b)} no depois): linhas com a mesma chave foram comparadas na ordem em que aparecem.`,
+        );
+      }
+      return result;
+    });
   };
 
   const importFromPage = useCallback(
@@ -305,6 +330,7 @@ export function App() {
       setAnonymizing(undefined);
       setColumnMenu(undefined);
       setSplitting(false);
+      setComparing(false);
       setConfirmReopen(undefined);
       setConfirmImport(undefined);
       setSaved(undefined);
@@ -501,6 +527,30 @@ export function App() {
   const removeFilter = (column: number) =>
     void applyView({ ...view, filters: view.filters.filter((f) => f.column !== column) });
 
+  // Resultado de "Comparar" (reconhecido pelas colunas, inclusive ao reabrir um CSV exportado).
+  const comparison =
+    info && info.columns.length > 2 && info.columns[0]!.name === STATUS_COLUMN && info.columns.at(-1)!.name === CHANGES_COLUMN
+      ? { status: 0, changes: info.columns.length - 1 }
+      : undefined;
+  const isComparison = comparison !== undefined;
+  const statusFilter = view.filters.find((f) => f.column === 0 && f.op === "equals")?.value;
+
+  // Quantas linhas em cada situação, recalculado a cada alteração nos dados.
+  useEffect(() => {
+    if (!isComparison) {
+      setStatusCounts(undefined);
+      return;
+    }
+    let cancelled = false;
+    client
+      .request("summarize", { column: 0, scope: "all" })
+      .then((summary) => !cancelled && setStatusCounts(Object.fromEntries(summary.top.map((t) => [t.value, t.count]))))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [client, info, isComparison]);
+
   // Busca: refeita quando o texto muda (com uma pequena espera) ou quando os dados ou a visualização mudam.
   useEffect(() => {
     if (screen.kind !== "ready") return;
@@ -672,6 +722,7 @@ export function App() {
             onBlank={() => void create(() => client.request("createBlank", { columns: 3, rows: 10 }))}
             onPaste={() => setPasting(true)}
             onMerge={() => setMerging(true)}
+            onCompare={() => setComparing(true)}
           />
         </>
       )}
@@ -680,6 +731,14 @@ export function App() {
       )}
       {pasting && <PasteDialog onSubmit={createFromText} onClose={() => setPasting(false)} />}
       {merging && <MergeDialog replacing={hasEdits} onMerge={mergeFiles} onClose={() => setMerging(false)} />}
+      {comparing && (
+        <CompareDialog
+          current={screen.kind === "ready" ? info?.fileName : undefined}
+          replacing={hasEdits}
+          onCompare={compareFiles}
+          onClose={() => setComparing(false)}
+        />
+      )}
       {screen.kind === "choose-sheet" && (
         <SheetPicker
           fileName={screen.file.name}
@@ -703,6 +762,26 @@ export function App() {
             onExport={() => setExporting(true)}
             onClearSaved={() => void clearSaved()}
           />
+          {comparison && statusCounts && (
+            <div className="compare-bar" role="group" aria-label="Filtrar pela situação">
+              {COMPARE_STATUSES.map((status) => {
+                const active = statusFilter === status;
+                return (
+                  <button
+                    key={status}
+                    type="button"
+                    className={`compare-chip status-${status.toLowerCase()}${active ? " active" : ""}`}
+                    aria-pressed={active}
+                    disabled={busy}
+                    title={active ? "Mostrar todas as linhas" : `Mostrar só as linhas "${status}"`}
+                    onClick={() => (active ? removeFilter(0) : setFilter({ column: 0, op: "equals", value: status }))}
+                  >
+                    <strong>{formatCount(statusCounts[status] ?? 0)}</strong> {STATUS_LABELS[status][statusCounts[status] === 1 ? 0 : 1]}
+                  </button>
+                );
+              })}
+            </div>
+          )}
           {info.mojibakeCells > 0 && (
             <div className="banner warn" role="status">
               <span>
@@ -729,6 +808,7 @@ export function App() {
                   items: [
                     { label: "Dividir arquivo…", onClick: () => setSplitting(true) },
                     { label: "Juntar arquivos…", onClick: () => setMerging(true) },
+                    { label: "Comparar com outro arquivo…", onClick: () => setComparing(true) },
                   ],
                 },
               ]}
@@ -798,6 +878,7 @@ export function App() {
               readOnly={busy}
               validations={validations}
               invalidCounts={invalidCounts}
+              comparison={comparison}
               onSort={(column, additive) => void applyView({ ...view, sort: nextSort(view.sort, column, additive) })}
               onFilter={setFilterColumn}
               onFilterInvalid={(column) => setFilter({ column, op: "invalid", rule: validations[column] })}

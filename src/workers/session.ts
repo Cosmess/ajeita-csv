@@ -10,7 +10,6 @@ import { summarizeColumn } from "../core/inspect/summary";
 import { allIndices, buildView, type ViewSpec } from "../core/inspect/view";
 import { planOp, type Op, type Plan } from "../core/ops";
 import { zipSync } from "fflate";
-import Papa from "papaparse";
 import { clipboardText } from "../core/export/clipboard";
 import { buildXlsx } from "../core/export/xlsx";
 import { mergeDatasets, mergedColumns, summarizeMerge, type MergeFileSummary, type MergeInput } from "../core/files/merge";
@@ -32,7 +31,8 @@ import { previewPlan, type Preview } from "../core/preview";
 import { indexedDbStore, type SessionStore, type SessionSummary } from "../storage/session";
 import { countInvalid, type ValidationRule } from "../core/validate";
 import { suggestColumns, type ColumnSuggestion } from "../core/transform/anonymize";
-import type { DatasetInfo, ExportScope, OpenProgress, OpenResult, ProblemItem } from "./protocol";
+import { compareColumns, compareDatasets, suggestKey, type CompareOptions, type CompareSummary } from "../core/files/compare";
+import type { ComparePreview, DatasetInfo, ExportScope, OpenProgress, OpenResult, ProblemItem } from "./protocol";
 
 const ZIP_MAGIC = [0x50, 0x4b, 0x03, 0x04];
 const EMPTY_VIEW: ViewSpec = { sort: [], filters: [] };
@@ -77,6 +77,7 @@ export class WorkerSession {
   private exportCache?: { key: string; text: string };
   // Plano da última prévia: aplicar a mesma operação logo depois não calcula de novo.
   private previewed?: { key: string; version: number; plan: Plan };
+  private compareCache?: Map<string, MergeInput>;
   private saveTimer?: ReturnType<typeof setTimeout>;
   private pendingSave?: Promise<void>;
   private readonly store: SessionStore;
@@ -150,11 +151,11 @@ export class WorkerSession {
 
   // --- Criar ------------------------------------------------------------------
 
-  // Grade vazia, texto ou tabela da página: os dados viram um CSV em memória, que
-  // é o "arquivo" da sessão (para salvar e exportar como qualquer outro).
+  // Grade vazia, texto, tabela da página, arquivos juntados ou comparados. O "arquivo" da
+  // sessão só dá o nome: dados criados não são relidos, e salvar e exportar usam o dataset.
   createFromRows(name: string, rows: string[][], hasHeader: boolean): DatasetInfo {
     if (rows.length === 0) throw new Error("Não há dados para criar a planilha");
-    this.file = new File([Papa.unparse(rows, { escapeFormulae: false })], name, { type: "text/csv" });
+    this.file = new File([], name, { type: "text/csv" });
     this.workbook = undefined;
     this.load(tableFromCreated(rows, hasHeader));
     return this.info();
@@ -218,6 +219,50 @@ export class WorkerSession {
   async mergeFiles(files: File[], addSource: boolean): Promise<DatasetInfo> {
     const rows = mergeDatasets(await this.readInputs(files), addSource);
     return this.createFromRows("arquivos-juntados.csv", rows, true);
+  }
+
+  // --- Comparar ----------------------------------------------------------------
+
+  async previewCompare(before: File | undefined, after: File): Promise<ComparePreview> {
+    const sides = await this.compareSides(before, after);
+    const [a, b] = summarizeMerge(sides);
+    return {
+      files: [a!, b!],
+      columns: compareColumns(sides[0].dataset, sides[1].dataset),
+      suggestedKey: suggestKey(sides[0].dataset, sides[1].dataset),
+    };
+  }
+
+  async compareFiles(before: File | undefined, after: File, options: CompareOptions): Promise<{ info: DatasetInfo; summary: CompareSummary }> {
+    const [a, b] = await this.compareSides(before, after);
+    this.compareCache = undefined;
+    const { rows, summary } = compareDatasets(a, b, options);
+    const base = (name: string) => name.replace(/\.[^.]+$/, "") || "arquivo";
+    return { info: this.createFromRows(`comparacao_${base(a.name)}_x_${base(b.name)}.csv`, rows, true), summary };
+  }
+
+  // Esquece os arquivos lidos para a comparação (diálogo cancelado).
+  cancelCompare(): void {
+    this.compareCache = undefined;
+  }
+
+  // Os arquivos lidos na prévia ficam guardados para a comparação não ler tudo de novo:
+  // com arquivos grandes, ler duas vezes custa segundos e muita memória.
+  private async compareSides(before: File | undefined, after: File): Promise<[MergeInput, MergeInput]> {
+    const id = (file: File) => `${file.name}\u0000${file.size}\u0000${file.lastModified}`;
+    const read = async (file: File) => {
+      const cached = this.compareCache?.get(id(file));
+      if (cached) return cached;
+      const [input] = await this.readInputs([file]);
+      this.compareCache ??= new Map();
+      this.compareCache.set(id(file), input!);
+      return input!;
+    };
+    const a = before ? await read(before) : { name: this.file?.name ?? "arquivo aberto", dataset: this.requireDataset() };
+    // Só os arquivos desta comparação ficam guardados.
+    const keep = new Set([before && id(before), id(after)]);
+    for (const key of this.compareCache?.keys() ?? []) if (!keep.has(key)) this.compareCache!.delete(key);
+    return [a, await read(after)];
   }
 
   // --- SQL --------------------------------------------------------------------
@@ -368,6 +413,7 @@ export class WorkerSession {
   // Volta ao início: esquece o arquivo aberto e apaga a sessão salva.
   async close(): Promise<void> {
     await this.discardSaved();
+    this.compareCache = undefined;
     this.file = undefined;
     this.workbook = undefined;
     this.dataset = undefined;
