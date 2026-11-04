@@ -9,6 +9,7 @@ type Props = {
   info: DatasetInfo;
   busy: boolean;
   onReopen: (overrides: ParseOverrides, sheet?: string) => void;
+  onHome: () => void;
   onSetHeader: (hasHeader: boolean) => void;
   onUndo: () => void;
   onRedo: () => void;
@@ -30,9 +31,23 @@ export function FileBar(props: Props) {
   return (
     <section className="file-bar">
       <div className="file-bar-top">
-        <strong className="file-name" title={info.fileName}>
-          {info.fileName}
-        </strong>
+        <div className="file-title">
+          <button
+            type="button"
+            className="grid-icon home-button"
+            disabled={busy}
+            aria-label="Início"
+            title="Voltar ao início (fecha o arquivo)"
+            onClick={props.onHome}
+          >
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+              <path d="M3 11 12 3l9 8M5 9.5V21h5v-6h4v6h5V9.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+          <strong className="file-name" title={info.fileName}>
+            {info.fileName}
+          </strong>
+        </div>
         <div className="file-actions">
           <button
             type="button"

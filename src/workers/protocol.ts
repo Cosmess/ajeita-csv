@@ -68,6 +68,7 @@ export type RequestMap = {
   savedSession: Rpc<Record<string, never>, SessionSummary | null>;
   restore: Rpc<Record<string, never>, DatasetInfo>;
   discardSaved: Rpc<Record<string, never>, void>;
+  close: Rpc<Record<string, never>, void>;
   setView: Rpc<ViewSpec, { viewCount: number; viewVersion: number }>;
   getRows: Rpc<{ start: number; count: number }, { viewVersion: number; start: number; indices: number[]; rows: string[][] }>;
   search: Rpc<{ query: string }, { total: number; stored: number }>;

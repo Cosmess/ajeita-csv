@@ -98,6 +98,7 @@ export function App() {
   const [focus, setFocus] = useState<{ position: number; key: number }>();
   const [saved, setSaved] = useState<SessionSummary>();
   const [confirmReopen, setConfirmReopen] = useState<{ overrides: ParseOverrides; sheet?: string }>();
+  const [confirmHome, setConfirmHome] = useState(false);
   const [action, setAction] = useState<{ def: ActionDef; column?: number }>();
   const [actionPicker, setActionPicker] = useState<number>();
   const [columnMenu, setColumnMenu] = useState<{ column: number; anchor: { left: number; top: number } }>();
@@ -279,6 +280,45 @@ export function App() {
   const requestReopen = (overrides: ParseOverrides, sheet?: string) => {
     if (info?.undo) setConfirmReopen({ overrides, sheet });
     else void reopen(overrides, sheet);
+  };
+
+  // Volta à tela inicial: fecha o arquivo e apaga a sessão salva.
+  const goHome = async () => {
+    setConfirmHome(false);
+    setBusy(true);
+    try {
+      await client.request("close", {});
+      setInfo(undefined);
+      setView(EMPTY_VIEW);
+      setViewState({ count: 0, version: 0 });
+      setValidations({});
+      setFilterColumn(undefined);
+      setDrawer(undefined);
+      setPreview(undefined);
+      setExporting(false);
+      setSearch(EMPTY_SEARCH);
+      setFocus(undefined);
+      setAction(undefined);
+      setActionPicker(undefined);
+      setColumnMenu(undefined);
+      setSplitting(false);
+      setConfirmReopen(undefined);
+      setConfirmImport(undefined);
+      setSaved(undefined);
+      setError(undefined);
+      setNotice(undefined);
+      setScreen({ kind: "empty" });
+    } catch (e) {
+      setError(message(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Com alterações feitas, pedir confirmação antes de zerar.
+  const requestHome = () => {
+    if (info?.undo) setConfirmHome(true);
+    else void goHome();
   };
 
   const restoreSaved = async () => {
@@ -583,6 +623,20 @@ export function App() {
         </div>
       )}
 
+      {confirmHome && (
+        <div className="banner warn" role="alertdialog" aria-label="Confirmar volta ao início">
+          <span>Voltar ao início descarta o arquivo aberto e as alterações feitas. Exporte antes se quiser guardá-las.</span>
+          <span className="banner-actions">
+            <button type="button" className="button" onClick={() => setConfirmHome(false)}>
+              Cancelar
+            </button>
+            <button type="button" className="button primary" onClick={() => void goHome()}>
+              Descartar e voltar
+            </button>
+          </span>
+        </div>
+      )}
+
       {confirmImport && (
         <div className="banner warn" role="alertdialog" aria-label="Confirmar importação">
           <span>
@@ -638,6 +692,7 @@ export function App() {
             info={info}
             busy={busy}
             onReopen={requestReopen}
+            onHome={requestHome}
             onSetHeader={(hasHeader) => void execute({ op: "setHeader", params: { hasHeader } })}
             onUndo={() => void undo()}
             onRedo={() => void redo()}

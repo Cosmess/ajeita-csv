@@ -195,6 +195,18 @@ describe("sessão do worker", () => {
     expect(await session.savedSession()).toBeUndefined();
   });
 
+  it("volta ao início sem arquivo aberto e sem sessão salva", async () => {
+    const store = memoryStore();
+    const { session } = await openCsv("clientes-utf8-virgula.csv", store);
+    session.execute({ op: "deleteRows", params: { rows: [0] } });
+    await session.close();
+    expect(await session.savedSession()).toBeUndefined();
+    expect(() => session.getRows(0, 10)).toThrow("Nenhum arquivo aberto");
+    // O salvamento agendado antes de fechar não grava nada depois.
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    expect(await session.savedSession()).toBeUndefined();
+  });
+
   it("conta inválidos e usa a regra no resumo e no filtro", async () => {
     const { session } = await openCsv("documentos-cpf-cnpj.csv");
     expect(session.countInvalid(1, "cpfCnpj")).toBe(11);
