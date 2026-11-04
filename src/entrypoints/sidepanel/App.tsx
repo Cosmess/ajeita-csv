@@ -15,6 +15,7 @@ import type { SessionSummary } from "../../storage/session";
 import { ACTIONS, type ActionDef } from "../../ui/actions";
 import { ActionDialog } from "../../ui/components/ActionDialog";
 import { ActionsMenu } from "../../ui/components/ActionsMenu";
+import { AnonymizeDialog } from "../../ui/components/AnonymizeDialog";
 import { ColumnMenu } from "../../ui/components/ColumnMenu";
 import { ColumnSummary } from "../../ui/components/ColumnSummary";
 import { ExportDialog } from "../../ui/components/ExportDialog";
@@ -101,6 +102,7 @@ export function App() {
   const [confirmHome, setConfirmHome] = useState(false);
   const [action, setAction] = useState<{ def: ActionDef; column?: number }>();
   const [actionPicker, setActionPicker] = useState<number>();
+  const [anonymizing, setAnonymizing] = useState<{ column?: number }>();
   const [columnMenu, setColumnMenu] = useState<{ column: number; anchor: { left: number; top: number } }>();
   const [validations, setValidations] = useState<Partial<Record<number, ValidationRule>>>({});
   const [invalidCounts, setInvalidCounts] = useState<Partial<Record<number, number>>>({});
@@ -300,6 +302,7 @@ export function App() {
       setFocus(undefined);
       setAction(undefined);
       setActionPicker(undefined);
+      setAnonymizing(undefined);
       setColumnMenu(undefined);
       setSplitting(false);
       setConfirmReopen(undefined);
@@ -719,9 +722,15 @@ export function App() {
           <div className="toolbar">
             <ActionsMenu
               disabled={busy}
-              files={[
-                { label: "Dividir arquivo…", onClick: () => setSplitting(true) },
-                { label: "Juntar arquivos…", onClick: () => setMerging(true) },
+              extra={[
+                { title: "Privacidade", items: [{ label: "Anonimizar dados (LGPD)…", onClick: () => setAnonymizing({}) }] },
+                {
+                  title: "Arquivos",
+                  items: [
+                    { label: "Dividir arquivo…", onClick: () => setSplitting(true) },
+                    { label: "Juntar arquivos…", onClick: () => setMerging(true) },
+                  ],
+                },
               ]}
               onPick={(def) =>
                 def.direct
@@ -912,6 +921,16 @@ export function App() {
                       {def.label}
                     </button>
                   ))}
+                  <button
+                    type="button"
+                    className="menu-item"
+                    onClick={() => {
+                      setAnonymizing({ column: actionPicker });
+                      setActionPicker(undefined);
+                    }}
+                  >
+                    Anonimizar (LGPD)
+                  </button>
                 </div>
                 <div className="modal-actions">
                   <button type="button" className="button" onClick={() => setActionPicker(undefined)}>
@@ -932,6 +951,17 @@ export function App() {
                 void openPreview(op);
               }}
               onClose={() => setAction(undefined)}
+            />
+          )}
+          {anonymizing && (
+            <AnonymizeDialog
+              columns={info.columns}
+              column={anonymizing.column}
+              onSubmit={(op) => {
+                setAnonymizing(undefined);
+                void openPreview(op);
+              }}
+              onClose={() => setAnonymizing(undefined)}
             />
           )}
           {preview && (

@@ -8,7 +8,7 @@ import { NormalizedColumns } from "../core/inspect/normalize";
 import { searchCells, type SearchResult } from "../core/inspect/search";
 import { summarizeColumn } from "../core/inspect/summary";
 import { allIndices, buildView, type ViewSpec } from "../core/inspect/view";
-import { planOp, type Op } from "../core/ops";
+import { planOp, type Op, type Plan } from "../core/ops";
 import { zipSync } from "fflate";
 import Papa from "papaparse";
 import { clipboardText } from "../core/export/clipboard";
@@ -31,6 +31,7 @@ import { readSheetRows, readWorkbook, type Workbook } from "../core/parse/xlsx";
 import { previewPlan, type Preview } from "../core/preview";
 import { indexedDbStore, type SessionStore, type SessionSummary } from "../storage/session";
 import { countInvalid, type ValidationRule } from "../core/validate";
+import { suggestColumns, type ColumnSuggestion } from "../core/transform/anonymize";
 import type { DatasetInfo, ExportScope, OpenProgress, OpenResult, ProblemItem } from "./protocol";
 
 const ZIP_MAGIC = [0x50, 0x4b, 0x03, 0x04];
@@ -74,6 +75,8 @@ export class WorkerSession {
   private mojibakeCells = 0;
   private searchResult?: SearchResult;
   private exportCache?: { key: string; text: string };
+  // Plano da última prévia: aplicar a mesma operação logo depois não calcula de novo.
+  private previewed?: { key: string; version: number; plan: Plan };
   private saveTimer?: ReturnType<typeof setTimeout>;
   private pendingSave?: Promise<void>;
   private readonly store: SessionStore;
@@ -242,11 +245,16 @@ export class WorkerSession {
 
   preview(op: Op): Preview {
     const dataset = this.requireDataset();
-    return previewPlan(dataset, planOp(dataset, op));
+    const plan = planOp(dataset, op);
+    this.previewed = { key: JSON.stringify(op), version: this.version, plan };
+    return previewPlan(dataset, plan);
   }
 
   execute(op: Op): DatasetInfo {
-    const result = execute(this.requireDataset(), this.history, op);
+    const previewed = this.previewed;
+    this.previewed = undefined;
+    const plan = previewed?.version === this.version && previewed.key === JSON.stringify(op) ? previewed.plan : undefined;
+    const result = execute(this.requireDataset(), this.history, op, plan);
     // Depois de aplicar a ordenação, os dados já estão na ordem; a visualização não reordena de novo.
     if (op.op === "applySort") this.viewSpec = { ...this.viewSpec, sort: [] };
     this.change(result.dataset, result.history);
@@ -351,6 +359,10 @@ export class WorkerSession {
     this.saveTimer = undefined;
     await this.pendingSave?.catch(() => {});
     await this.store.clear();
+  }
+
+  anonymizeSuggestions(): ColumnSuggestion[] {
+    return suggestColumns(this.requireDataset());
   }
 
   // Volta ao início: esquece o arquivo aberto e apaga a sessão salva.
@@ -500,6 +512,7 @@ export class WorkerSession {
 
   private bump(): void {
     this.version++;
+    this.previewed = undefined;
     this.exportCache = undefined;
   }
 

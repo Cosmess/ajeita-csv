@@ -14,6 +14,7 @@ import { previewPlan } from "../../src/core/preview";
 import { zipSync } from "fflate";
 import { buildXlsx } from "../../src/core/export/xlsx";
 import { planSplit } from "../../src/core/files/split";
+import { randomKey, suggestColumns } from "../../src/core/transform/anonymize";
 
 const FILE = join(__dirname, "..", "fixtures", "generated", "referencia.csv");
 // Metas do CLAUDE.md, com 20% de tolerância.
@@ -123,6 +124,20 @@ describe.skipIf(!existsSync(FILE))("desempenho com o arquivo de referência", ()
       expect(applied.ms).toBeLessThan(seconds(3));
     });
   }
+
+  it("anonimizar: mascarar CPF como uma transformação simples; dado falso em todas as colunas pessoais", () => {
+    const sensitive = suggestColumns(dataset).filter((s) => s.sensitive);
+    const mask: Op = { op: "anonymize", params: { rules: [{ column: 2, method: "mask", kind: "document" }], key: randomKey(), shared: false } };
+    const preview = measure("prévia mascarar CPF", () => previewPlan(dataset, planOp(dataset, mask)));
+    expect(preview.ms).toBeLessThan(seconds(1));
+    const fake: Op = {
+      op: "anonymize",
+      params: { rules: sensitive.map((s) => ({ column: s.column, method: "fake", kind: s.kind })), key: randomKey(), shared: false },
+    };
+    // Sem meta no CLAUDE.md: gera ~6 milhões de valores com HMAC; o aplicar reaproveita o plano da prévia.
+    const all = measure(`dado falso em ${sensitive.length} colunas`, () => previewPlan(dataset, planOp(dataset, fake)));
+    expect(all.ms).toBeLessThan(seconds(20));
+  });
 
   it("dividir coluna em < 3 s", () => {
     const { ms } = measure("dividir nome", () =>

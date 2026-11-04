@@ -38,6 +38,24 @@ export function isValidCnpj(value: string): boolean {
   return chars.endsWith(`${first}${second}`);
 }
 
+// Dígitos verificadores de uma base de 9 dígitos (CPF) ou 12 caracteres (CNPJ).
+export function cpfCheckDigits(base: string): string {
+  const d = [...base].map(Number);
+  for (const length of [9, 10]) {
+    let sum = 0;
+    for (let i = 0; i < length; i++) sum += d[i]! * (length + 1 - i);
+    d.push(((sum * 10) % 11) % 10);
+  }
+  return `${d[9]}${d[10]}`;
+}
+
+export function cnpjCheckDigits(base: string): string {
+  const values = [...base].map((c) => c.charCodeAt(0) - 48);
+  const first = cnpjCheckDigit(values, CNPJ_WEIGHTS_1);
+  const second = cnpjCheckDigit([...values, first], CNPJ_WEIGHTS_2);
+  return `${first}${second}`;
+}
+
 export function maskCpf(digits: string): string {
   return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
 }

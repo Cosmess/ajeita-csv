@@ -14,6 +14,7 @@ import type { ValidationRule } from "../core/validate";
 import type { SqlOptions } from "../core/create/sql";
 import type { MergeFileSummary } from "../core/files/merge";
 import type { SplitMode } from "../core/files/split";
+import type { ColumnSuggestion } from "../core/transform/anonymize";
 
 export type DatasetInfo = {
   fileName: string;
@@ -69,6 +70,9 @@ export type RequestMap = {
   restore: Rpc<Record<string, never>, DatasetInfo>;
   discardSaved: Rpc<Record<string, never>, void>;
   close: Rpc<Record<string, never>, void>;
+  // Anonimizar: tipo de dado sugerido por coluna e chave derivada de uma senha.
+  anonymizeSuggestions: Rpc<Record<string, never>, ColumnSuggestion[]>;
+  anonymizeKey: Rpc<{ password: string }, string>;
   setView: Rpc<ViewSpec, { viewCount: number; viewVersion: number }>;
   getRows: Rpc<{ start: number; count: number }, { viewVersion: number; start: number; indices: number[]; rows: string[][] }>;
   search: Rpc<{ query: string }, { total: number; stored: number }>;

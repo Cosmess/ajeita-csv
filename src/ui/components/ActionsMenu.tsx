@@ -4,11 +4,11 @@ import { ACTION_GROUPS, ACTIONS, type ActionDef } from "../actions";
 type Props = {
   disabled: boolean;
   onPick: (action: ActionDef) => void;
-  // Itens que abrem janelas próprias (dividir, juntar), no grupo "Arquivos".
-  files: { label: string; onClick: () => void }[];
+  // Grupos de itens que abrem janelas próprias (anonimizar, dividir, juntar).
+  extra: { title: string; items: { label: string; onClick: () => void }[] }[];
 };
 
-export function ActionsMenu({ disabled, onPick, files }: Props) {
+export function ActionsMenu({ disabled, onPick, extra }: Props) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -52,23 +52,25 @@ export function ActionsMenu({ disabled, onPick, files }: Props) {
               ))}
             </div>
           ))}
-          <div className="menu-group">
-            <p className="menu-title">Arquivos</p>
-            {files.map((item) => (
-              <button
-                key={item.label}
-                type="button"
-                role="menuitem"
-                className="menu-item"
-                onClick={() => {
-                  setOpen(false);
-                  item.onClick();
-                }}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
+          {extra.map(({ title, items }) => (
+            <div key={title} className="menu-group">
+              <p className="menu-title">{title}</p>
+              {items.map((item) => (
+                <button
+                  key={item.label}
+                  type="button"
+                  role="menuitem"
+                  className="menu-item"
+                  onClick={() => {
+                    setOpen(false);
+                    item.onClick();
+                  }}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          ))}
         </div>
       )}
     </div>

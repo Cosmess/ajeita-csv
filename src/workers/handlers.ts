@@ -6,6 +6,7 @@ import type {
   RequestType,
   WorkerMessage,
 } from "./protocol";
+import { keyFromPassword } from "../core/transform/anonymize";
 import { WorkerSession } from "./session";
 
 export type HandlerContext<T extends RequestType = RequestType> = {
@@ -33,6 +34,8 @@ export function createHandlers(session = new WorkerSession()): Handlers {
     restore: () => session.restore(),
     discardSaved: () => session.discardSaved(),
     close: () => session.close(),
+    anonymizeSuggestions: () => session.anonymizeSuggestions(),
+    anonymizeKey: ({ password }) => keyFromPassword(password),
     setView: (spec) => session.setView(spec),
     getRows: ({ start, count }) => session.getRows(start, count),
     search: ({ query }) => session.search(query),
