@@ -186,9 +186,10 @@ export function compareDatasets(before: CompareSide, after: CompareSide, options
       ? (side === "a" ? single.normA : single.normB)(row[single[side]] ?? "")
       : keyColumns.map((c) => (side === "a" ? c.normA : c.normB)(row[c[side]] ?? "")).join("\u0000");
 
-  // Próxima linha do "antes" ainda sem par, por chave (KeyTable: chaves como "123" deixam
-  // o Map do Chrome lento). Chaves repetidas, que são raras, guardam as linhas seguintes
-  // em `repeated`.
+  // Próxima linha do "antes" ainda sem par, por chave. As chaves normalizadas ("n:1234",
+  // "i:52998224725") são montadas por concatenação, o que deixa o Map do Chrome lento:
+  // por isso a KeyTable. Chaves repetidas, que são raras, guardam as linhas seguintes em
+  // `repeated`.
   const SEEN = -1; // a chave já apareceu no "depois" e não sobra linha no "antes"
   const next = new KeyTable();
   const repeated = new Map<string, number[]>();

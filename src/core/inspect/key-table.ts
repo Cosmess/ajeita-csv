@@ -1,7 +1,7 @@
-// Mapa de texto → número para milhões de chaves. No Chrome, um Map com chaves de texto
-// como "123" ou "x123" fica dezenas de vezes mais lento que no Node (o hash de strings do
-// navegador espalha mal esse tipo de chave). Aqui o Map recebe só números: o hash FNV-1a
-// de cada chave, com as colisões encadeadas e conferidas pelo texto.
+// Mapa de texto → número para milhões de chaves montadas por concatenação. No Chrome, um
+// Map com 1 milhão de chaves como `n:${valor}` leva ~10 s (no Node, ~0,3 s); com os textos
+// que saem direto do parse, o Map comum é rápido. Aqui o Map recebe só números: o hash
+// FNV-1a de cada chave, com as colisões encadeadas e conferidas pelo texto.
 
 const END = -1;
 
