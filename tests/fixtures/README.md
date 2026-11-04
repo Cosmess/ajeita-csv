@@ -45,3 +45,4 @@ Todos os dados são fictícios. Os CPFs e CNPJs foram gerados com dígitos verif
 |---|---|
 | `fora-windows-1252.csv` | Emoji, `₹` e `✓` não existem em Windows-1252 e devem ser avisados na exportação; `€` existe e deve passar |
 | `juntar-parte-1.csv`, `juntar-parte-2.csv`, `juntar-parte-3.tsv` | Juntar arquivos com encodings (UTF-8 e Windows-1252), delimitadores, ordem e maiúsculas de colunas diferentes, coluna extra (`UF`) e coluna faltando (`cidade`) |
+| `comparar-antes.csv`, `comparar-depois.csv` | Comparar duas versões do mesmo cadastro: UTF-8 com `,` contra Windows-1252 com `;`, colunas em outra ordem, coluna removida (`cidade`) e nova (`telefone`), CPF com e sem máscara, valores `1.234,56` contra `1234.56`, nome só em maiúsculas, e-mail e valor alterados, uma pessoa nova e uma removida |

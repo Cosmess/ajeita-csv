@@ -545,6 +545,56 @@ label.radio {
   overflow: auto;
 }
 
+/* Comparar */
+
+.compare-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 6px;
+}
+
+.compare-chip {
+  padding: 2px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.compare-chip.active {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.compare-chip.status-novo strong,
+.grid-cell.status-novo {
+  color: var(--ok);
+}
+
+.compare-chip.status-removido strong,
+.grid-cell.status-removido {
+  color: var(--error);
+}
+
+.compare-chip.status-alterado strong,
+.grid-cell.status-alterado {
+  color: var(--warn);
+}
+
+.grid-cell.status-novo,
+.grid-cell.status-removido,
+.grid-cell.status-alterado {
+  font-weight: 600;
+}
+
+.grid-cell.diff-changed {
+  background: var(--warn-bg);
+}
+
 /* Anonimizar */
 
 .anonymize-list {

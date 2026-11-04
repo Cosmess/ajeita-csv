@@ -49,7 +49,7 @@ Versão 1.0.1, publicada na Chrome Web Store.
    - **Reordenar colunas:** arraste o cabeçalho.
 7. Clique em **Exportar**, escolha o formato (**Excel em português**, **CSV padrão**, **TSV**, **planilha do Excel (.xlsx)** ou **SQL**) e salve. **Copiar para colar no Excel/Sheets** leva as linhas para a área de transferência.
 8. **Ajeitar → Privacidade → Anonimizar dados (LGPD):** as colunas com dados pessoais (CPF/CNPJ, e-mail, telefone, CEP, nome, data de nascimento) já vêm marcadas. Para cada coluna, escolha **mascarar**, **pseudônimo**, **dado falso** ou **apagar**, confira a prévia e aplique. Também aparece no menu ⋯ → Formatar de cada coluna.
-9. **Ajeitar → Arquivos:** **Dividir arquivo** (a cada N linhas ou um arquivo por valor de uma coluna, num `.zip`) e **Juntar arquivos** (vários CSV, TSV, XLSX ou JSON, com as colunas alinhadas pelo nome). "Juntar vários arquivos" também aparece na tela inicial. Em "Opções avançadas" dá para trocar encoding (inclusive Windows-1252), separador, quebra de linha e aspas. Com filtro ou ordenação ativos, você escolhe se exporta o arquivo inteiro ou só o que está na tela.
+9. **Ajeitar → Arquivos:** **Dividir arquivo** (a cada N linhas ou um arquivo por valor de uma coluna, num `.zip`), **Juntar arquivos** (vários CSV, TSV, XLSX ou JSON, com as colunas alinhadas pelo nome) e **Comparar com outro arquivo** (o arquivo aberto é o "antes"). "Juntar vários arquivos" e "Comparar duas planilhas" também aparecem na tela inicial. Em "Opções avançadas" dá para trocar encoding (inclusive Windows-1252), separador, quebra de linha e aspas. Com filtro ou ordenação ativos, você escolhe se exporta o arquivo inteiro ou só o que está na tela.
 
 A extensão lembra a última escolha de exportação. O arquivo aberto e o histórico de alterações ficam salvos neste navegador: ao abrir o painel de novo, você pode **continuar de onde parou**. Para apagar, use ⚙ → **Limpar dados salvos**. Para fechar o arquivo e começar do zero, use o botão **⌂ Início** ao lado do nome do arquivo (se houver alterações, ele pede confirmação e apaga a sessão salva).
 
@@ -79,6 +79,13 @@ A extensão lembra a última escolha de exportação. O arquivo aberto e o hist�
 - **Validação** de CPF, CNPJ, e-mail, CEP, telefone e campos obrigatórios, com destaque e filtro dos inválidos.
 - Renomear, reordenar (arrastando), duplicar, excluir, dividir e juntar colunas.
 - **Localizar e substituir**, com expressões regulares (`$1`, `$2`). Uma expressão que demore mais de 10 segundos é interrompida e o arquivo volta ao estado anterior.
+
+### Comparar planilhas ✅
+- Compara duas versões de um arquivo ("antes" e "depois"), cada uma com encoding e separador detectados separadamente e as colunas alinhadas pelo nome.
+- **Coluna-chave** sugerida automaticamente (presente nos dois arquivos, sem vazios nem repetições, de preferência "id", "código", "CPF" ou "e-mail"); dá para usar várias colunas ou nenhuma (compara linha a linha).
+- Opções: comparar **pelo valor** (`1.234,56` = `1234.56`, `15/03/2025` = `2025-03-15`, CPF com e sem máscara e sem o zero perdido no Excel) e **ignorar maiúsculas, acentos e espaços extras**.
+- O resultado abre como planilha nova, com a coluna **situação** (Novo, Removido, Alterado, Igual) e a coluna **alterações** (`email: "joao@antigo.com" → "joao@novo.com"`). As células alteradas ficam destacadas e mostram o valor antigo ao passar o mouse; os contadores no topo filtram por situação.
+- Chaves repetidas são casadas na ordem em que aparecem, com aviso. Compara 1 milhão de linhas contra 1 milhão em ~2 s no navegador.
 
 ### Privacidade (LGPD) ✅
 - **Anonimizar** colunas antes de mandar a planilha para um fornecedor, para o suporte ou para uma base de testes. As colunas pessoais são sugeridas pelo conteúdo (CPF/CNPJ válidos, e-mails, telefones, CEPs) e pelo nome ("nome", "nascimento", "endereço").
@@ -165,7 +172,7 @@ src/
     parse/             # detecção de encoding, delimitador, cabeçalho e tipos; leitura de CSV e .xlsx
     inspect/           # ordenação, filtro, busca e resumo por coluna (retornam índices de linhas)
     export/            # CSV, encoder Windows-1252, .xlsx (gerador próprio em fluxo) e área de transferência
-    files/             # dividir e juntar arquivos
+    files/             # dividir, juntar e comparar arquivos
   workers/
     csv.worker.ts      # Web Worker que executa o processamento pesado
     protocol.ts        # contrato tipado das mensagens UI ↔ worker
@@ -203,7 +210,7 @@ Princípios que guiam o código:
 
 ## Testes
 
-- `pnpm test` roda os testes unitários: detecção de encoding, delimitador, cabeçalho e tipos com os [arquivos de exemplo](tests/fixtures/README.md), ordenação, filtros, busca, resumo, encoder Windows-1252, **ida e volta** (exportar em cada formato e abrir de novo devolve os mesmos dados), correção de acentos e de problemas, anonimização (máscaras, pseudônimos com e sem senha, dados falsos válidos e sem repetição; SHA-256/HMAC conferidos com o `node:crypto`), **50 passos aleatórios desfeitos** que voltam exatamente ao original, e sessão salva no IndexedDB.
+- `pnpm test` roda os testes unitários: detecção de encoding, delimitador, cabeçalho e tipos com os [arquivos de exemplo](tests/fixtures/README.md), ordenação, filtros, busca, resumo, encoder Windows-1252, **ida e volta** (exportar em cada formato e abrir de novo devolve os mesmos dados), correção de acentos e de problemas, anonimização (máscaras, pseudônimos com e sem senha, dados falsos válidos e sem repetição; SHA-256/HMAC conferidos com o `node:crypto`), comparação de planilhas (chave sugerida, CPF com e sem máscara, números em formatos diferentes, chaves repetidas), **50 passos aleatórios desfeitos** que voltam exatamente ao original, e sessão salva no IndexedDB.
 - `pnpm gen:fixtures && pnpm bench` mede o desempenho com 1 milhão de linhas. Medições num Mac com Apple Silicon:
 
 | Operação | Tempo | Meta |
@@ -217,6 +224,7 @@ Princípios que guiam o código:
 | Prévia de uma transformação numa coluna (espaços, CPF, telefone, data, número) | 0,4 a 0,7 s | 1 s |
 | Aplicar a transformação | 0,5 a 1,6 s | 3 s |
 | Dividir uma coluna | 0,7 s | 3 s |
+| Comparar 1 milhão de linhas com uma versão alterada | 1,2 s | — |
 | Anonimizar: prévia de mascarar CPF | 0,9 s | 1 s |
 | Anonimizar: dado falso em 6 colunas pessoais (~6 milhões de valores) | 13,8 s | — |
 | Dividir o arquivo em 10 partes num `.zip` | 7,4 s | — |

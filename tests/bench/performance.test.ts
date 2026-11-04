@@ -15,6 +15,7 @@ import { zipSync } from "fflate";
 import { buildXlsx } from "../../src/core/export/xlsx";
 import { planSplit } from "../../src/core/files/split";
 import { randomKey, suggestColumns } from "../../src/core/transform/anonymize";
+import { compareDatasets } from "../../src/core/files/compare";
 
 const FILE = join(__dirname, "..", "fixtures", "generated", "referencia.csv");
 // Metas do CLAUDE.md, com 20% de tolerância.
@@ -137,6 +138,22 @@ describe.skipIf(!existsSync(FILE))("desempenho com o arquivo de referência", ()
     // Sem meta no CLAUDE.md: gera ~6 milhões de valores com HMAC; o aplicar reaproveita o plano da prévia.
     const all = measure(`dado falso em ${sensitive.length} colunas`, () => previewPlan(dataset, planOp(dataset, fake)));
     expect(all.ms).toBeLessThan(seconds(20));
+  });
+
+  it("compara 1 milhão de linhas com uma versão alterada", () => {
+    // "Depois": 0,5% das linhas removidas, 1% alteradas e 5 mil novas.
+    const rows = dataset.rows.filter((_, i) => i % 200 !== 7).map((row, i) => (i % 100 === 3 ? row.map((v, c) => (c === 10 ? `${v}*` : v)) : row));
+    for (let i = 0; i < 5000; i++) rows.push(dataset.columns.map((_, c) => (c === 0 ? String(2_000_000 + i) : "")));
+    const after = { ...dataset, rows };
+    const { ms, result } = measure("comparar 1 milhão de linhas", () =>
+      compareDatasets(
+        { name: "antes", dataset },
+        { name: "depois", dataset: after },
+        { keys: [dataset.columns[0]!.name], byValue: true, ignoreCase: false, includeSame: true },
+      ),
+    );
+    expect(result.summary.counts).toEqual({ Novo: 5000, Removido: 5000, Alterado: 9950, Igual: 985_050 });
+    expect(ms).toBeLessThan(seconds(10));
   });
 
   it("dividir coluna em < 3 s", () => {

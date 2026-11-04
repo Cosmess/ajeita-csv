@@ -15,6 +15,7 @@ import type { SqlOptions } from "../core/create/sql";
 import type { MergeFileSummary } from "../core/files/merge";
 import type { SplitMode } from "../core/files/split";
 import type { ColumnSuggestion } from "../core/transform/anonymize";
+import type { CompareColumns, CompareOptions, CompareSummary } from "../core/files/compare";
 
 export type DatasetInfo = {
   fileName: string;
@@ -55,6 +56,12 @@ export type Operation = DataOp;
 
 type Rpc<P, R, G = never> = { params: P; result: R; progress: G };
 
+export type ComparePreview = {
+  files: [MergeFileSummary, MergeFileSummary];
+  columns: CompareColumns;
+  suggestedKey?: string;
+};
+
 export type RequestMap = {
   ping: Rpc<{ sentAt: number }, { sentAt: number; handledAt: number }>;
   openFile: Rpc<{ file: File; sheet?: string }, OpenResult, OpenProgress>;
@@ -93,6 +100,10 @@ export type RequestMap = {
   exportSplit: Rpc<{ split: SplitMode; options: CsvExportOptions; scope: ExportScope; policy: UnencodablePolicy }, { bytes: Uint8Array }>;
   previewMerge: Rpc<{ files: File[] }, { files: MergeFileSummary[]; columns: string[] }>;
   mergeFiles: Rpc<{ files: File[]; addSource: boolean }, DatasetInfo>;
+  // Comparar: sem `before`, o "antes" é o arquivo aberto.
+  previewCompare: Rpc<{ before?: File; after: File }, ComparePreview>;
+  cancelCompare: Rpc<Record<string, never>, void>;
+  compareFiles: Rpc<{ before?: File; after: File; options: CompareOptions }, { info: DatasetInfo; summary: CompareSummary }>;
   // Salva a sessão agora, sem esperar (antes de uma operação que pode travar o worker).
   flush: Rpc<Record<string, never>, void>;
   checkExport: Rpc<{ options: CsvExportOptions; scope: ExportScope }, { unencodable: { char: string; count: number }[] }>;
