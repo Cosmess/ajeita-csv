@@ -50,7 +50,7 @@ Versão 1.0.0, pronta para envio à Chrome Web Store (ainda não publicada).
 7. Clique em **Exportar**, escolha o formato (**Excel em português**, **CSV padrão**, **TSV**, **planilha do Excel (.xlsx)** ou **SQL**) e salve. **Copiar para colar no Excel/Sheets** leva as linhas para a área de transferência.
 8. **Ajeitar → Arquivos:** **Dividir arquivo** (a cada N linhas ou um arquivo por valor de uma coluna, num `.zip`) e **Juntar arquivos** (vários CSV, TSV, XLSX ou JSON, com as colunas alinhadas pelo nome). "Juntar vários arquivos" também aparece na tela inicial. Em "Opções avançadas" dá para trocar encoding (inclusive Windows-1252), separador, quebra de linha e aspas. Com filtro ou ordenação ativos, você escolhe se exporta o arquivo inteiro ou só o que está na tela.
 
-A extensão lembra a última escolha de exportação. O arquivo aberto e o histórico de alterações ficam salvos neste navegador: ao abrir o painel de novo, você pode **continuar de onde parou**. Para apagar, use ⚙ → **Limpar dados salvos**.
+A extensão lembra a última escolha de exportação. O arquivo aberto e o histórico de alterações ficam salvos neste navegador: ao abrir o painel de novo, você pode **continuar de onde parou**. Para apagar, use ⚙ → **Limpar dados salvos**. Para fechar o arquivo e começar do zero, use o botão **⌂ Início** ao lado do nome do arquivo (se houver alterações, ele pede confirmação e apaga a sessão salva).
 
 ## Funcionalidades
 

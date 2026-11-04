@@ -353,6 +353,23 @@ export class WorkerSession {
     await this.store.clear();
   }
 
+  // Volta ao início: esquece o arquivo aberto e apaga a sessão salva.
+  async close(): Promise<void> {
+    await this.discardSaved();
+    this.file = undefined;
+    this.workbook = undefined;
+    this.dataset = undefined;
+    this.jsonArrays = [];
+    this.history = emptyHistory();
+    this.viewSpec = EMPTY_VIEW;
+    this.normalized = undefined;
+    this.view = new Uint32Array(0);
+    this.problems = [];
+    this.mojibakeCells = 0;
+    this.searchResult = undefined;
+    this.bump();
+  }
+
   // Salva já, sem esperar (usado nos testes e ao fechar).
   async flush(): Promise<void> {
     if (this.saveTimer) {

@@ -32,6 +32,7 @@ export function createHandlers(session = new WorkerSession()): Handlers {
     savedSession: async () => (await session.savedSession()) ?? null,
     restore: () => session.restore(),
     discardSaved: () => session.discardSaved(),
+    close: () => session.close(),
     setView: (spec) => session.setView(spec),
     getRows: ({ start, count }) => session.getRows(start, count),
     search: ({ query }) => session.search(query),
