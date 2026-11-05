@@ -107,6 +107,33 @@ describe("resumo por coluna", () => {
     expect(summary).toMatchObject({ total: 2, unique: 1, top: [{ value: "Recife", count: 2 }] });
   });
 
+  it("soma e média em colunas numéricas, no formato da coluna", () => {
+    // 1.234,56 + 89,90 + 15.000,00 + 0,99 = 16.325,45
+    expect(summarizeColumn(parseText(csv), 2)).toMatchObject({ numeric: 4, sum: "16.325,45", mean: "4.081,36" });
+    expect(summarizeColumn(parseText(csv), 1).sum).toBeUndefined();
+    expect(summarizeColumn(parseText(csv), 3).sum).toBeUndefined();
+
+    const us = summarizeColumn(parseText("id;v\na;1,000.5\nb;2,000.25\nc;0.1"), 1);
+    expect(us).toMatchObject({ sum: "3,000.85", mean: "1,000.28" });
+
+    const integers = summarizeColumn(parseText("qtd\n1\n2\n4"), 0);
+    expect(integers).toMatchObject({ sum: "7", mean: "2,33" });
+  });
+
+  it("soma sem erro de ponto flutuante e com R$ quando a coluna é de moeda", () => {
+    expect(summarizeColumn(parseText("id;v\na;0,1\nb;0,2"), 1).sum).toBe("0,3");
+    expect(summarizeColumn(parseText("id;v\na;R$ 1.000,00\nb;-R$ 2.500,50\nc;R$ 10,00"), 1)).toMatchObject({
+      sum: "-R$ 1.490,50",
+      mean: "-R$ 496,83",
+    });
+  });
+
+  it("soma e média respeitam o filtro e ignoram o que não é número", () => {
+    expect(summarizeColumn(parseText(csv), 2, Uint32Array.from([0, 4]))).toMatchObject({ numeric: 2, sum: "1.235,55" });
+    const rows = ["v", ...Array.from({ length: 40 }, (_, i) => String(i + 1)), "n/d"];
+    expect(summarizeColumn(parseText(rows.join("\n")), 0)).toMatchObject({ total: 41, numeric: 40, sum: "820", mean: "20,5" });
+  });
+
   it("limita aos 10 valores mais frequentes", () => {
     const rows = ["v", ...Array.from({ length: 30 }, (_, i) => `valor${i % 15}`)];
     const summary = summarizeColumn(parseText(rows.join("\n")), 0);
