@@ -10,7 +10,7 @@ Resolve os problemas mais comuns de quem lida com planilhas no dia a dia: acento
 
 ## Status
 
-Versão 1.1.0 (comparar planilhas e anonimizar dados), publicada na Chrome Web Store.
+Versão 1.2.0 (soma e média de colunas numéricas), publicada na Chrome Web Store.
 
 ![Ajeita CSV corrigindo acentos quebrados](assets/screenshot.png)
 
