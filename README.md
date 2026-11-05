@@ -34,7 +34,7 @@ Versão 1.1.0 (comparar planilhas e anonimizar dados), publicada na Chrome Web S
    - **Ordenar:** clique no nome da coluna (crescente → decrescente → sem ordem). Com **Shift + clique**, ordena por mais de uma coluna.
    - **Filtrar:** clique em ⏷ no cabeçalho e escolha a condição (contém, é igual a, começa com, está vazio, não está vazio). Os filtros ativos aparecem acima da grade.
    - **Buscar:** digite no campo de busca; use Enter (ou ↓) para ir à próxima ocorrência e Shift + Enter (ou ↑) para a anterior.
-   - **Resumo:** clique em Σ no cabeçalho para ver tipo, vazios, valores únicos, mínimo/máximo e os valores mais frequentes. Clicar num valor filtra por ele.
+   - **Resumo:** clique em Σ no cabeçalho para ver tipo, vazios, valores únicos, mínimo/máximo, **soma e média** (colunas de números, no formato da coluna e com `R$` quando a coluna é de moeda) e os valores mais frequentes. Clicar num valor filtra por ele. Com filtro ativo, tudo considera só as linhas filtradas.
 5. Para corrigir:
    - **Acentos quebrados** (`JoÃ£o`): quando o arquivo tem esse problema, aparece um aviso amarelo. Clique em **Corrigir…**, confira a prévia (antes → depois) e aplique.
    - **Problemas de estrutura** (aspas não fechadas, colunas a mais ou a menos, quebras de linha dentro de campo): clique no aviso ⚠ no rodapé. Para cada linha dá para ir até ela, corrigir automaticamente, editar o texto da linha ou excluí-la, ou corrigir todas de uma vez.
@@ -44,7 +44,7 @@ Versão 1.1.0 (comparar planilhas e anonimizar dados), publicada na Chrome Web S
    - **Desfazer e refazer:** botões ↶ ↷ ou ⌘Z / ⌘⇧Z (Ctrl+Z / Ctrl+Y no Windows). Toda alteração pode ser desfeita.
 6. Para formatar e limpar:
    - **Menu Ajeitar ▾** (ao lado da busca): limpeza (espaços extras, maiúsculas/minúsculas, acentos, linhas duplicadas, linhas e colunas vazias), conversões (datas, números, CPF/CNPJ, telefones, CEP), dividir e juntar colunas, e localizar e substituir. Escolha as colunas, ajuste as opções e confira a **prévia** antes de aplicar; o que não for reconhecido fica como está e aparece listado.
-   - **Menu ⋯ de cada coluna:** renomear, resumo, filtrar, formatar, **validar como** (CPF, CNPJ, e-mail, CEP, telefone, obrigatório), dividir, duplicar, mover e excluir.
+   - **Menu ⋯ de cada coluna:** renomear, resumo, **somar coluna**, **média da coluna** (o resultado aparece num aviso no topo), filtrar, formatar, **validar como** (CPF, CNPJ, e-mail, CEP, telefone, obrigatório), dividir, duplicar, mover e excluir.
    - **Validação:** as células inválidas ficam sublinhadas em vermelho e o cabeçalho mostra quantas são (✗ 12). Clique no contador para ver só as inválidas.
    - **Reordenar colunas:** arraste o cabeçalho.
 7. Clique em **Exportar**, escolha o formato (**Excel em português**, **CSV padrão**, **TSV**, **planilha do Excel (.xlsx)** ou **SQL**) e salve. **Copiar para colar no Excel/Sheets** leva as linhas para a área de transferência.
@@ -60,7 +60,7 @@ A extensão lembra a última escolha de exportação. O arquivo aberto e o hist�
 - Detecção automática de **encoding** (UTF-8 ou Windows-1252), **delimitador** (`,` `;` tab `|`) e **cabeçalho**, sempre com opção de ajuste manual.
 - Detecção do **tipo de cada coluna**: texto, número (formato brasileiro `1.234,56` ou americano `1,234.56`), data (`dd/mm/aaaa`, `mm/dd/aaaa` ou ISO) e sim/não.
 - Grade virtualizada: abre arquivos de 1 milhão de linhas sem travar.
-- Ordenar (por tipo: números e datas em ordem numérica, texto sem diferenciar acentos), filtrar e buscar; resumo estatístico por coluna.
+- Ordenar (por tipo: números e datas em ordem numérica, texto sem diferenciar acentos), filtrar e buscar; resumo estatístico por coluna, com soma e média.
 - Arquivos `.xlsx` são lidos como o texto exibido no Excel: zeros à esquerda e datas são preservados.
 
 ### Corrigir ✅
@@ -210,7 +210,7 @@ Princípios que guiam o código:
 
 ## Testes
 
-- `pnpm test` roda os testes unitários: detecção de encoding, delimitador, cabeçalho e tipos com os [arquivos de exemplo](tests/fixtures/README.md), ordenação, filtros, busca, resumo, encoder Windows-1252, **ida e volta** (exportar em cada formato e abrir de novo devolve os mesmos dados), correção de acentos e de problemas, anonimização (máscaras, pseudônimos com e sem senha, dados falsos válidos e sem repetição; SHA-256/HMAC conferidos com o `node:crypto`), comparação de planilhas (chave sugerida, CPF com e sem máscara, números em formatos diferentes, chaves repetidas), **50 passos aleatórios desfeitos** que voltam exatamente ao original, e sessão salva no IndexedDB.
+- `pnpm test` roda os testes unitários: detecção de encoding, delimitador, cabeçalho e tipos com os [arquivos de exemplo](tests/fixtures/README.md), ordenação, filtros, busca, resumo (soma e média sem erro de ponto flutuante, nos formatos BR, US e com `R$`), encoder Windows-1252, **ida e volta** (exportar em cada formato e abrir de novo devolve os mesmos dados), correção de acentos e de problemas, anonimização (máscaras, pseudônimos com e sem senha, dados falsos válidos e sem repetição; SHA-256/HMAC conferidos com o `node:crypto`), comparação de planilhas (chave sugerida, CPF com e sem máscara, números em formatos diferentes, chaves repetidas), **50 passos aleatórios desfeitos** que voltam exatamente ao original, e sessão salva no IndexedDB.
 - `pnpm gen:fixtures && pnpm bench` mede o desempenho com 1 milhão de linhas. Medições num Mac com Apple Silicon:
 
 | Operação | Tempo | Meta |

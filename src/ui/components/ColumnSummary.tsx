@@ -43,7 +43,21 @@ export function ColumnSummary({ summary, loading, filtered, onFilterValue, onClo
                 <dd>{summary.max}</dd>
               </>
             )}
+            {summary.sum !== undefined && (
+              <>
+                <dt>Soma</dt>
+                <dd>{summary.sum}</dd>
+                <dt>Média</dt>
+                <dd>{summary.mean}</dd>
+              </>
+            )}
           </dl>
+          {summary.numeric !== undefined && summary.numeric < summary.total - summary.empty && (
+            <p className="muted small">
+              Soma e média usam os {formatCount(summary.numeric)} valores que são números; os outros{" "}
+              {formatCount(summary.total - summary.empty - summary.numeric)} ficam de fora.
+            </p>
+          )}
           {summary.top.length > 0 && (
             <>
               <p className="drawer-subtitle">Mais frequentes (clique para filtrar)</p>

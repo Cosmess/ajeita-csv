@@ -12,6 +12,11 @@ export type ColumnSummary = {
   unique: number;
   min?: string;
   max?: string;
+  // Colunas numéricas: soma e média dos valores que são números, já formatadas no
+  // formato da coluna, e quantos valores entraram na conta.
+  sum?: string;
+  mean?: string;
+  numeric?: number;
   top: { value: string; count: number }[];
   // Quantos valores não passam na validação ativa da coluna.
   invalid?: number;
@@ -35,6 +40,12 @@ export function summarizeColumn(dataset: Dataset, column: number, indices?: Uint
   let empty = 0;
   let min: { key: number; value: string } | undefined;
   let max: { key: number; value: string } | undefined;
+  const isNumber = info.type === "number";
+  const separator = info.format === "br" ? "," : ".";
+  let sum = 0;
+  let numeric = 0;
+  let decimals = 0;
+  let currency = 0;
 
   for (let i = 0; i < total; i++) {
     const row = indices ? indices[i]! : i;
@@ -47,6 +58,13 @@ export function summarizeColumn(dataset: Dataset, column: number, indices?: Uint
     if (parse) {
       const key = parse(value);
       if (Number.isNaN(key)) continue;
+      if (isNumber) {
+        sum += key;
+        numeric++;
+        const point = value.lastIndexOf(separator);
+        if (point >= 0) decimals = Math.max(decimals, value.trimEnd().length - point - 1);
+        if (value.includes("R$")) currency++;
+      }
       if (!min || key < min.key) min = { key, value };
       if (!max || key > max.key) max = { key, value };
     }
@@ -62,9 +80,31 @@ export function summarizeColumn(dataset: Dataset, column: number, indices?: Uint
     unique: counts.size,
     min: min?.value,
     max: max?.value,
+    ...(isNumber && numeric > 0
+      ? {
+          numeric,
+          sum: formatNumber(sum, info.format as NumberFormat, decimals, currency * 2 >= numeric),
+          mean: formatNumber(sum / numeric, info.format as NumberFormat, Math.max(decimals, 2), currency * 2 >= numeric, decimals),
+        }
+      : {}),
     top: topValues(counts),
     invalid: rule ? countInvalid(dataset.rows, column, rule, indices) : undefined,
   };
+}
+
+const MAX_DECIMALS = 6;
+
+// Formata no padrão da coluna ("1.234,56" ou "1,234.56"); inteiros sem formato usam o
+// brasileiro. `decimals` arredonda, o que também limpa o erro de ponto flutuante da soma
+// (0,1 + 0,2 = 0,30000000000000004).
+function formatNumber(value: number, format: NumberFormat, decimals: number, currency: boolean, minDecimals = decimals): string {
+  const digits = Math.min(decimals, MAX_DECIMALS);
+  const text = value.toLocaleString(format === "us" ? "en-US" : "pt-BR", {
+    minimumFractionDigits: Math.min(minDecimals, digits),
+    maximumFractionDigits: digits,
+  });
+  if (!currency) return text;
+  return text.startsWith("-") ? `-R$ ${text.slice(1)}` : `R$ ${text}`;
 }
 
 // Seleciona os mais frequentes numa passada, sem ordenar todos os valores únicos.

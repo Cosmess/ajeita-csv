@@ -586,9 +586,29 @@ export function App() {
     setSearch((current) => ({ ...current, current: index, match: match ?? undefined }));
   };
 
+  const filtered = view.filters.length > 0;
+
+  // "Somar coluna" e "Média da coluna": o mesmo cálculo do resumo, mostrado num aviso.
+  const calculate = async (column: number, kind: "sum" | "mean") => {
+    try {
+      const data = await client.request("summarize", { column, scope: filtered ? "view" : "all" });
+      const value = kind === "sum" ? data.sum : data.mean;
+      if (value === undefined) {
+        setNotice(`A coluna "${data.name}" não tem números para ${kind === "sum" ? "somar" : "calcular a média"}.`);
+        return;
+      }
+      const ignored = data.total - data.empty - (data.numeric ?? 0);
+      setNotice(
+        `${kind === "sum" ? "Soma" : "Média"} de "${data.name}": ${value} (${formatCount(data.numeric ?? 0)} ${data.numeric === 1 ? "valor" : "valores"}` +
+          `${filtered ? ", só nas linhas filtradas" : ""}${ignored > 0 ? `; ${formatCount(ignored)} não numéricos ignorados` : ""}).`,
+      );
+    } catch (e) {
+      setError(message(e));
+    }
+  };
+
   // Resumo da coluna aberta, recalculado quando os dados ou os filtros mudam.
   const summaryColumn = drawer?.kind === "summary" ? drawer.column : undefined;
-  const filtered = view.filters.length > 0;
   useEffect(() => {
     if (summaryColumn === undefined) return;
     let cancelled = false;
@@ -965,6 +985,7 @@ export function App() {
               hasHeader={info.meta.hasHeader}
               rule={validations[columnMenu.column]}
               onSummary={() => setDrawer({ kind: "summary", column: columnMenu.column })}
+              onCalculate={(kind) => void calculate(columnMenu.column, kind)}
               onFilter={() => setFilterColumn(columnMenu.column)}
               onFormat={() => setActionPicker(columnMenu.column)}
               onSplit={() => setAction({ def: ACTIONS.find((a) => a.id === "splitColumn")!, column: columnMenu.column })}

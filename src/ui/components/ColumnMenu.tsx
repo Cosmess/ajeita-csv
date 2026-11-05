@@ -9,6 +9,7 @@ type Props = {
   hasHeader: boolean;
   rule?: ValidationRule;
   onSummary: () => void;
+  onCalculate: (kind: "sum" | "mean") => void;
   onFilter: () => void;
   onFormat: () => void;
   onSplit: () => void;
@@ -20,6 +21,8 @@ type Props = {
   onValidate: (rule: ValidationRule | undefined) => void;
   onClose: () => void;
 };
+
+const NOT_NUMERIC = "Disponível para colunas de números";
 
 export function ColumnMenu(props: Props) {
   const { column, columns, anchor } = props;
@@ -39,12 +42,14 @@ export function ColumnMenu(props: Props) {
     };
   }, [props]);
 
-  const item = (label: string, action: () => void, disabled = false) => (
+  const numeric = columns[column]?.type === "number";
+  const item = (label: string, action: () => void, disabled = false, title?: string) => (
     <button
       type="button"
       role="menuitem"
       className="menu-item"
       disabled={disabled}
+      title={disabled ? title : undefined}
       onClick={() => {
         action();
         props.onClose();
@@ -87,6 +92,8 @@ export function ColumnMenu(props: Props) {
         </button>
       )}
       {item("Resumo", props.onSummary)}
+      {item("Somar coluna", () => props.onCalculate("sum"), !numeric, NOT_NUMERIC)}
+      {item("Média da coluna", () => props.onCalculate("mean"), !numeric, NOT_NUMERIC)}
       {item("Filtrar…", props.onFilter)}
       {item("Formatar e limpar…", props.onFormat)}
       <label className="menu-select">
